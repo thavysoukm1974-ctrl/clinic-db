@@ -1,0 +1,11 @@
+# The live database and backups are DATA, not code. Keep them out of git so we
+# never commit real shop data, and so the repo stays small. The schema.sql file
+# (which IS code) is tracked, so anyone can rebuild an empty database.
+db/
+backups/
+
+# Python noise
+__pycache__/
+*.pyc
+.venv/
+venv/
