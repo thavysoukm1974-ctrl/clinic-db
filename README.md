@@ -25,7 +25,8 @@ clinic-db/
 │   ├── visits.py       Record a patient visit (+ medicine given); read a patient's history.
 │   ├── reports.py      Sales by month, totals for a date range, best sellers, money in/out.
 │   ├── followups.py    "Schedule to come back": estimate when given medicine runs out.
-│   └── app.py          Text-menu user interface: calls the functions above.
+│   ├── app.py          Text-menu user interface: calls the functions above.
+│   └── gui.py          First graphical window (Tkinter): a stock table + Refresh.
 ├── db/                 The live database file lives here (created on first run, not in git).
 └── backups/            Timestamped backups land here (not in git).
 ```
