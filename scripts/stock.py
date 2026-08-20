@@ -3,12 +3,12 @@ stock.py -- read-only questions about how much stock we have.
 
     python scripts/stock.py
 
-This is STEP A of building the sale feature: before we can SELL a medicine
-(which subtracts from stock), we must be able to COUNT it. Everything here only
-READS the database -- it changes nothing, so it's completely safe to run.
+Everything here only READS the database -- it changes nothing, so it is
+completely safe to run.
 
 The key idea: a medicine's "stock on hand" is not stored as one number. It is
-the SUM of the quantities of all its batches. We add them up when we need them.
+the SUM of the quantities of all its batches, added up on demand. Selling
+(see sales.py) relies on the batch ordering that batches_for() produces below.
 """
 
 from init_db import DB_FILE, get_connection
@@ -51,9 +51,9 @@ def current_stock(conn):
 def batches_for(conn, medicine_id):
     """Return a medicine's batches that still have stock, SOONEST-EXPIRY FIRST.
 
-    This is the FEFO list -- "First Expiry, First Out". When we sell, we walk
-    this list from the top, taking units until the sale is filled. It only
-    reads; it doesn't sell anything yet.
+    This is the FEFO list -- "First Expiry, First Out". Selling walks this list
+    from the top, taking units until the order is filled, so the stock closest
+    to expiring is used first. This function only reads; it does not sell.
 
       WHERE quantity > 0   -- skip empty batches; no point offering 0 units.
       ORDER BY expiry_date -- ASC = smallest date first = expires soonest first.

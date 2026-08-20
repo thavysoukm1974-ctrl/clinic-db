@@ -12,8 +12,6 @@
 --
 --  `medicines` is the BRIDGE: a medicine can be given during a visit
 --  (clinical) and also sold over the counter (pharmacy).
---
---  This is a DRAFT we refine together. Nothing here is final.
 -- ============================================================================
 
 
@@ -185,11 +183,11 @@ CREATE TABLE IF NOT EXISTS visits (
 --  sale with no visit. This is how "medicine given during diagnosis" is tied to
 --  the patient -- optionally, never forced.
 --
---  Notice there is NO stored total here. Following the clinic owner's own
---  principle -- "record each small event, COMPUTE the summaries" -- the total
---  is added up from this sale's sale_items whenever we need it. The total can
---  never drift from the lines, and no monthly/weekly total is stored anywhere;
---  every report is computed from the raw sales.
+--  Notice there is NO stored total here. The guiding rule is "record each small
+--  event, COMPUTE the summaries": the total is added up from this sale's
+--  sale_items whenever it is needed. That way the total can never drift from the
+--  lines, and no monthly/weekly total is stored anywhere -- every report is
+--  computed from the raw sales.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sales (
     id              INTEGER PRIMARY KEY,
@@ -212,8 +210,8 @@ CREATE TABLE IF NOT EXISTS sales (
 --  price. We freeze it here at sale time.
 --
 --  batch_id records WHICH lot the units came from, so stock math and expiry
---  stay honest. Nullable for now so simple early sales needn't pick a batch
---  until we build that logic together.
+--  stay honest. It is nullable so a simple sale can leave it empty when it does
+--  not need to track the exact batch.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sale_items (
     id           INTEGER PRIMARY KEY,

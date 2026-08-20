@@ -1,9 +1,9 @@
 """
-sales.py -- STEP C: record a sale AND subtract the stock. The heart of the system.
+sales.py -- record a sale AND subtract the stock. The core operation of the system.
 
-This is the real selling logic (the simple `record_sale` inside sample_data.py
-was just a seeder that did NOT touch stock). Here, selling actually reduces the
-right batches, refuses to oversell, and remembers which batch each unit came from.
+Selling here reduces the right batches, refuses to oversell, and remembers which
+batch each unit came from. (The simpler `record_sale` inside sample_data.py is
+only a seeder for test data and does NOT touch stock -- this is the real logic.)
 
 To try it on the sample database:
     python scripts/sales.py

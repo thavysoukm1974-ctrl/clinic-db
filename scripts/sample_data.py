@@ -3,10 +3,10 @@ sample_data.py -- fill the database with FAKE data so we can test and learn.
 
     python scripts/sample_data.py
 
-IMPORTANT: this is pretend data (from the plan: "No real patient or sales data
-in the test system"). It exists so you can see the tables working -- run a
-report, check an expiring batch, look at a patient's visit history -- without
-touching the clinic's real records.
+IMPORTANT: this is pretend data only -- never put real patient or sales data in
+the test database. It exists so the tables can be seen working -- run a report,
+check an expiring batch, look at a patient's visit history -- without touching
+any real records.
 
 Safe to run more than once, but it ADDS a fresh set each time (you'll get
 duplicates). To start clean: delete db/clinic.sqlite and run init_db.py again.
@@ -80,19 +80,18 @@ def insert_batches(conn, med_ids):
 
 
 def record_sale(conn, med_ids, lines, visit_id=None):
-    """Record ONE sale. This is the core operation of the whole system, so it's
-    worth reading closely -- we'll build the "real" version of this together.
+    """Insert ONE sale as test data (a simplified seeder, not the real selling
+    logic -- the real one that also subtracts stock lives in sales.py).
 
     A sale is TWO steps:
-      1. insert the receipt into `sales` -> gives us a sale_id
+      1. insert the receipt into `sales` -> gives a sale_id
          (visit_id is NULL for a walk-in counter sale, or set when the sale is
           medicine given during a visit)
       2. insert each line into `sale_items`, all pointing at that sale_id
 
     `lines` is a list of (medicine_name, quantity, unit_price).
-    There is NO total to store -- we compute it from the lines when needed.
-    (Decrementing batch stock is deliberately NOT done here yet; that's logic we
-    build together so you understand it fully.)
+    No total is stored -- it is computed from the lines when needed. This seeder
+    intentionally does NOT decrement batch stock; it only fills in example rows.
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

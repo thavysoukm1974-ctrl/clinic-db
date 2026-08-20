@@ -3,15 +3,15 @@ backup.py -- make a safe, timestamped copy of the database file.
 
     python scripts/backup.py
 
-You lost data once; this exists so that never costs you the project again.
-It copies db/clinic.sqlite to backups/clinic-YYYY-MM-DD_HHMMSS.sqlite.
+It copies db/clinic.sqlite to backups/clinic-YYYY-MM-DD_HHMMSS.sqlite so there
+is always a safe copy to fall back on if the live database is damaged or lost.
 
-We use sqlite3's OWN backup API instead of just copying the file, because a
-plain file copy can be corrupt if the database is mid-write. The backup API
-copies a consistent snapshot safely, even while the database is in use.
+It uses sqlite3's OWN backup API instead of just copying the file, because a
+plain file copy can be corrupt if the database is written to mid-copy. The
+backup API copies a consistent snapshot safely, even while the database is in use.
 
-A backup is only useful if you actually run it. Later we can make this run
-automatically, but for now: run it before and after any big change.
+A backup only helps if it is actually run -- a good habit is to run it before
+and after any big change.
 """
 
 import sqlite3
