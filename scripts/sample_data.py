@@ -1,5 +1,5 @@
 """
-sample_data.py -- fill the database with FAKE data so we can test and learn.
+sample_data.py -- fill the database with FAKE data so the tables can be tested.
 
     python scripts/sample_data.py
 
@@ -11,21 +11,36 @@ any real records.
 Safe to run more than once, but it ADDS a fresh set each time (you'll get
 duplicates). To start clean: delete db/clinic.sqlite and run init_db.py again.
 
-Read this file to see, in plain Python, HOW rows get inserted -- especially:
-  * a SALE = one row in `sales` + several rows in `sale_items`
-  * a sale can be a walk-in (no visit) OR tied to a visit (medicine given
-    during diagnosis -- which the clinic counts as selling)
-  * a VISIT with no sale (a patient can be seen and buy nothing)
+The seeded sales are recorded with the REAL selling logic (sales.record_sale /
+visits.record_visit), so they behave exactly like a real sale: stock is taken
+from batches soonest-expiry-first, and each line records which batch it came
+from. That is what lets the profit report work on this sample data.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
-# Reuse the exact same connection helper the rest of the project uses, so
-# foreign keys are always ON. (init_db.py lives next to this file.)
 from init_db import DB_FILE, get_connection
+from sales import record_sale
+from visits import record_visit
 
 
-# ---------------------------------------------------------------- pharmacy side
+def insert_suppliers(conn):
+    """Add suppliers and return their ids keyed by name. The same medicine can be
+    bought from more than one of these, at different prices."""
+    rows = [
+        # (name, phone, note)
+        ("Pharma Co Ltd",   "023-000-000", "main wholesaler, buys in bulk"),
+        ("Neighbor Clinic", "023-111-111", "small top-up buys nearby"),
+    ]
+    ids = {}
+    for name, phone, note in rows:
+        cur = conn.execute(
+            "INSERT INTO suppliers (name, phone, note) VALUES (?, ?, ?)",
+            (name, phone, note),
+        )
+        ids[name] = cur.lastrowid
+    return ids
+
 
 def insert_medicines(conn):
     """Add products to the catalog. Returns their new ids keyed by name.
@@ -54,68 +69,40 @@ def insert_medicines(conn):
     return ids
 
 
-def insert_batches(conn, med_ids):
-    """Add stock lots. One batch expires SOON on purpose, so the 'expiring soon'
-    warning has something to find, and Amoxicillin is left low on stock."""
+def insert_batches(conn, med_ids, sup_ids):
+    """Add stock lots. received_quantity is set equal to quantity here because
+    these are freshly received (nothing sold yet). Paracetamol gets TWO batches
+    bought from different suppliers at different prices, to show that the same
+    medicine can cost different amounts to restock."""
     today = date.today()
-    expired = today - timedelta(days=10)  # ALREADY expired 10 days ago
-    near = today + timedelta(days=30)    # expires fairly soon -> FEFO sells this FIRST
-    soon = today + timedelta(days=20)    # ~3 weeks out -> should trigger a warning
-    later = today + timedelta(days=400)  # safely far away
+    expired = today - timedelta(days=10)         # expired 10 days ago
+    expired_received = today - timedelta(days=40)  # ...and was received before that
+    near = today + timedelta(days=30)            # expires soon -> FEFO sells first
+    soon = today + timedelta(days=20)            # ~3 weeks out -> expiry warning
+    later = today + timedelta(days=400)          # safely far away
+
+    pharma = sup_ids["Pharma Co Ltd"]
+    neighbor = sup_ids["Neighbor Clinic"]
 
     rows = [
-        # (medicine name, quantity, purchase_price, received_date, expiry_date)
-        ("Paracetamol",   40, 3.00, today.isoformat(), near.isoformat()),   # 2 Paracetamol batches,
-        ("Paracetamol",  100, 3.00, today.isoformat(), later.isoformat()),  #   different expiry dates
-        ("Amoxicillin",    8, 8.00, today.isoformat(), soon.isoformat()),   # low AND expiring
-        ("Cough Syrup",   30, 5.50, today.isoformat(), later.isoformat()),
-        ("Cough Syrup",    3, 5.50, today.isoformat(), expired.isoformat()),# an expired lot still on hand
-        ("Vitamin C",    200, 1.50, today.isoformat(), later.isoformat()),
-        ("Gauze Bandage", 50, 1.00, today.isoformat(), later.isoformat()),
+        # (medicine, quantity, purchase_price, received_date, expiry_date, supplier_id)
+        ("Paracetamol",   40, 3.50, today.isoformat(),            near.isoformat(),    neighbor),  # small top-up, pricier
+        ("Paracetamol",  100, 3.00, today.isoformat(),            later.isoformat(),   pharma),    # bulk, cheaper
+        ("Amoxicillin",    8, 8.00, today.isoformat(),            soon.isoformat(),    pharma),
+        ("Cough Syrup",   30, 5.50, today.isoformat(),            later.isoformat(),   pharma),
+        ("Cough Syrup",    3, 5.50, expired_received.isoformat(), expired.isoformat(), pharma),    # an expired lot still on hand
+        ("Vitamin C",    200, 1.50, today.isoformat(),            later.isoformat(),   pharma),
+        ("Gauze Bandage", 50, 1.00, today.isoformat(),            later.isoformat(),   pharma),
     ]
-    for name, qty, cost, received, expiry in rows:
+    for name, qty, cost, received, expiry, supplier_id in rows:
         conn.execute(
             """INSERT INTO batches
-                   (medicine_id, quantity, purchase_price, received_date, expiry_date)
-               VALUES (?, ?, ?, ?, ?)""",
-            (med_ids[name], qty, cost, received, expiry),
+                   (medicine_id, supplier_id, received_quantity, quantity,
+                    purchase_price, received_date, expiry_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (med_ids[name], supplier_id, qty, qty, cost, received, expiry),
         )
 
-
-def record_sale(conn, med_ids, lines, visit_id=None):
-    """Insert ONE sale as test data (a simplified seeder, not the real selling
-    logic -- the real one that also subtracts stock lives in sales.py).
-
-    A sale is TWO steps:
-      1. insert the receipt into `sales` -> gives a sale_id
-         (visit_id is NULL for a walk-in counter sale, or set when the sale is
-          medicine given during a visit)
-      2. insert each line into `sale_items`, all pointing at that sale_id
-
-    `lines` is a list of (medicine_name, quantity, unit_price).
-    No total is stored -- it is computed from the lines when needed. This seeder
-    intentionally does NOT decrement batch stock; it only fills in example rows.
-    """
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # Step 1: the receipt (optionally tied to a visit).
-    cur = conn.execute(
-        "INSERT INTO sales (sale_datetime, visit_id) VALUES (?, ?)",
-        (now, visit_id),
-    )
-    sale_id = cur.lastrowid
-
-    # Step 2: the lines, each tied to sale_id.
-    for name, qty, price in lines:
-        conn.execute(
-            """INSERT INTO sale_items (sale_id, medicine_id, quantity, unit_price)
-               VALUES (?, ?, ?, ?)""",
-            (sale_id, med_ids[name], qty, price),
-        )
-    return sale_id
-
-
-# ---------------------------------------------------------------- clinical side
 
 def insert_people(conn):
     """Add a couple of patients and staff. Returns (patient_ids, employee_ids)."""
@@ -149,49 +136,31 @@ def insert_people(conn):
     return patient_ids, employee_ids
 
 
-def insert_visits(conn, patient_ids, employee_ids, med_ids):
-    """Two visits that show the key ideas:
-
-      * Visit A: patient seen by a doctor, diagnosis + treatment recorded, and
-        medicine given -- which counts as SELLING, so we record a sale LINKED to
-        this visit (no separate prescription table).
-      * Visit B: patient seen, but NOTHING given (stock was out) -- no sale.
-        This proves a visit does not have to result in a sale.
-    """
-    today = date.today().isoformat()
-
-    # Visit A -- medicine given during diagnosis = a sale tied to the visit.
-    cur = conn.execute(
-        """INSERT INTO visits (patient_id, employee_id, visit_date, diagnosis, treatment)
-           VALUES (?, ?, ?, ?, ?)""",
-        (patient_ids["Dara Chan"], employee_ids["Dr. Lin"], today,
-         "Fever", "Rest and paracetamol"),
-    )
-    visit_a = cur.lastrowid
-    record_sale(conn, med_ids, [("Paracetamol", 10, 5.00)], visit_id=visit_a)
-
-    # Visit B -- seen, but nothing given (e.g. stock was out). No sale at all.
-    conn.execute(
-        """INSERT INTO visits (patient_id, employee_id, visit_date, diagnosis, treatment)
-           VALUES (?, ?, ?, ?, ?)""",
-        (patient_ids["Sok Vann"], employee_ids["Dr. Lin"], today,
-         "Headache", "Advised rest; medicine out of stock"),
-    )
-
-
 def main():
     conn = get_connection(DB_FILE)
     try:
+        # --- catalog and stock -------------------------------------------------
+        sup_ids = insert_suppliers(conn)
         med_ids = insert_medicines(conn)
-        insert_batches(conn, med_ids)
-
-        # A walk-in counter sale -- no visit attached (visit_id stays NULL).
-        record_sale(conn, med_ids, [("Paracetamol", 2, 5.00), ("Vitamin C", 1, 3.00)])
-
+        insert_batches(conn, med_ids, sup_ids)
         patient_ids, employee_ids = insert_people(conn)
-        insert_visits(conn, patient_ids, employee_ids, med_ids)
-
         conn.commit()
+
+        # --- some real sales, using the actual selling logic -------------------
+        # A walk-in counter sale (no visit).
+        record_sale(conn, [(med_ids["Paracetamol"], 2), (med_ids["Vitamin C"], 1)])
+
+        # A visit where medicine is given (recorded as a visit-linked sale).
+        record_visit(
+            conn, patient_ids["Dara Chan"], employee_id=employee_ids["Dr. Lin"],
+            diagnosis="Fever", treatment="Rest and paracetamol",
+            medicines=[(med_ids["Paracetamol"], 10)],
+        )
+        # A visit where nothing is given (proves a visit need not have a sale).
+        record_visit(
+            conn, patient_ids["Sok Vann"], employee_id=employee_ids["Dr. Lin"],
+            diagnosis="Headache", treatment="Advised rest; medicine out of stock",
+        )
     finally:
         conn.close()
 

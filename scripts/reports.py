@@ -93,6 +93,66 @@ def best_sellers(conn, start_date=None, end_date=None, limit=5):
     ).fetchall()
 
 
+def financial_summary(conn, start_date, end_date):
+    """Return (revenue, cost_of_goods_sold, gross_profit) for sales in the range.
+
+      revenue = what we SOLD the units for (frozen sale_items.unit_price).
+      cogs    = what those same sold units COST us -- each sold line's batch
+                purchase_price, found by joining sale_items.batch_id to batches.
+      profit  = revenue - cogs.
+
+    This works because each sold line records WHICH batch it came from, and each
+    batch records what we paid for it. (A line with no batch_id contributes 0 to
+    cogs -- real sales always set it.)
+    """
+    revenue, cogs = conn.execute(
+        """
+        SELECT COALESCE(SUM(si.quantity * si.unit_price), 0)    AS revenue,
+               COALESCE(SUM(si.quantity * b.purchase_price), 0) AS cogs
+        FROM sales s
+        JOIN sale_items si ON si.sale_id = s.id
+        LEFT JOIN batches b ON b.id = si.batch_id
+        WHERE date(s.sale_datetime) BETWEEN ? AND ?
+        """,
+        (start_date, end_date),
+    ).fetchone()
+    return revenue, cogs, revenue - cogs
+
+
+def reorder_spend(conn, start_date, end_date):
+    """Return the total money spent buying stock RECEIVED in the range:
+    the sum of received_quantity * purchase_price over those batches.
+
+    Uses received_quantity (the original amount bought), NOT quantity (what's
+    left), so selling stock afterwards does not change what we spent buying it.
+    """
+    return conn.execute(
+        """
+        SELECT COALESCE(SUM(received_quantity * purchase_price), 0)
+        FROM batches
+        WHERE received_date BETWEEN ? AND ?
+        """,
+        (start_date, end_date),
+    ).fetchone()[0]
+
+
+def reorder_spend_by_supplier(conn, start_date, end_date):
+    """Return [(supplier_name, spend)] for stock received in the range, biggest
+    first -- so you can see how much went to each supplier."""
+    return conn.execute(
+        """
+        SELECT COALESCE(sup.name, '(unknown supplier)')          AS supplier,
+               COALESCE(SUM(b.received_quantity * b.purchase_price), 0) AS spend
+        FROM batches b
+        LEFT JOIN suppliers sup ON sup.id = b.supplier_id
+        WHERE b.received_date BETWEEN ? AND ?
+        GROUP BY b.supplier_id
+        ORDER BY spend DESC
+        """,
+        (start_date, end_date),
+    ).fetchall()
+
+
 def main():
     conn = get_connection(DB_FILE)
     try:
@@ -116,6 +176,18 @@ def main():
             print("  nothing sold yet")
         for name, total_quantity, revenue in rows:
             print(f"  {name:<16} {total_quantity:>5} sold,  revenue {revenue}")
+
+        # Money in vs money out, for this month.
+        revenue, cogs, profit = financial_summary(conn, month_start, today.isoformat())
+        print(f"\n=== MONEY THIS MONTH ({month_start} to {today.isoformat()}) ===")
+        print(f"  revenue (money in from sales):     {revenue}")
+        print(f"  cost of goods sold (their cost):   {cogs}")
+        print(f"  gross profit (revenue - cost):     {profit}")
+
+        spend = reorder_spend(conn, month_start, today.isoformat())
+        print(f"\n  reorder spend (money out to buy stock): {spend}")
+        for supplier, amount in reorder_spend_by_supplier(conn, month_start, today.isoformat()):
+            print(f"    - {supplier:<18} {amount}")
     finally:
         conn.close()
 

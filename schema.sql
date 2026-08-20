@@ -93,17 +93,25 @@ CREATE TABLE IF NOT EXISTS medicines (
 --  One row per LOT of a medicine you received. We track stock by batch -- not
 --  as a single number on the medicine -- because MEDICINES EXPIRE. The same
 --  paracetamol bought in January and June are two batches, two expiry dates,
---  often two buy prices. `quantity` here is "how many are LEFT in this lot".
---  Selling reduces it; at 0 the batch is used up.
+--  often two buy prices (and maybe two different suppliers). Selling reduces
+--  `quantity`; at 0 the batch is used up.
+--
+--  Two quantity columns, on purpose:
+--    received_quantity = how many units were ORIGINALLY bought. Never changes.
+--    quantity          = how many are LEFT now. Selling lowers this one.
+--  We keep the original because otherwise, once stock is sold, we could no
+--  longer answer "how much did we spend restocking?" (received_quantity *
+--  purchase_price). It is the same freeze-the-fact idea as price on sale_items.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS batches (
-    id              INTEGER PRIMARY KEY,
-    medicine_id     INTEGER NOT NULL,            -- which product this lot is
-    supplier_id     INTEGER,                     -- who we bought it from (optional)
-    quantity        INTEGER NOT NULL,            -- units REMAINING in this batch
-    purchase_price  REAL,                        -- what WE paid per unit (cost)
-    received_date   TEXT,                        -- ISO text "2026-08-19"
-    expiry_date     TEXT,                        -- ISO text "2027-03-01"
+    id                INTEGER PRIMARY KEY,
+    medicine_id       INTEGER NOT NULL,          -- which product this lot is
+    supplier_id       INTEGER,                   -- who we bought it from (optional)
+    received_quantity INTEGER,                   -- units ORIGINALLY received (fixed)
+    quantity          INTEGER NOT NULL,          -- units REMAINING now (selling lowers this)
+    purchase_price    REAL,                      -- what WE paid per unit (cost)
+    received_date     TEXT,                      -- ISO text "2026-08-19"
+    expiry_date       TEXT,                      -- ISO text "2027-03-01"
 
     FOREIGN KEY (medicine_id) REFERENCES medicines(id),
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
