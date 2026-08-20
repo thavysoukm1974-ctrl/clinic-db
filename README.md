@@ -80,3 +80,6 @@ moving on.
 - What does she look up during a normal day? (Each answer points to a report.)
 - One computer or several at once? (Decides SQLite vs PostgreSQL timing.)
 - Any existing notebook/spreadsheet to import as a starting point?
+- **Stock habit:** will she keep a new batch boxed until the current one runs out
+  (so only one batch is open at a time)? This keeps the shelf matching the
+  database's soonest-expiry-first selling. (See DECISIONS.md #20.)

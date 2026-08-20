@@ -1,0 +1,98 @@
+"""
+stock.py -- read-only questions about how much stock we have.
+
+    python scripts/stock.py
+
+This is STEP A of building the sale feature: before we can SELL a medicine
+(which subtracts from stock), we must be able to COUNT it. Everything here only
+READS the database -- it changes nothing, so it's completely safe to run.
+
+The key idea: a medicine's "stock on hand" is not stored as one number. It is
+the SUM of the quantities of all its batches. We add them up when we need them.
+"""
+
+from init_db import DB_FILE, get_connection
+
+
+def current_stock(conn):
+    """Return a list of (medicine_id, name, unit, on_hand) -- one row per active
+    medicine, with on_hand = total units across all its batches.
+
+    Read the SQL slowly; each line does one job:
+
+      LEFT JOIN batches ... -- attach every batch belonging to the medicine.
+                               We use LEFT (not plain) JOIN so a medicine with
+                               NO batches still appears, showing 0 -- otherwise
+                               it would silently vanish from the list.
+      SUM(b.quantity)       -- add up the units across those batches.
+      COALESCE(..., 0)      -- if there are no batches, SUM is NULL; turn that
+                               into a clean 0.
+      GROUP BY m.id         -- collapse the joined rows down to one row PER
+                               medicine (that's what makes SUM sum per medicine).
+      WHERE m.is_active = 1 -- ignore discontinued medicines.
+      ORDER BY m.name       -- show them alphabetically.
+    """
+    rows = conn.execute(
+        """
+        SELECT m.id,
+               m.name,
+               m.unit,
+               COALESCE(SUM(b.quantity), 0) AS on_hand
+        FROM medicines m
+        LEFT JOIN batches b ON b.medicine_id = m.id
+        WHERE m.is_active = 1
+        GROUP BY m.id
+        ORDER BY m.name
+        """
+    ).fetchall()
+    return rows
+
+
+def batches_for(conn, medicine_id):
+    """Return a medicine's batches that still have stock, SOONEST-EXPIRY FIRST.
+
+    This is the FEFO list -- "First Expiry, First Out". When we sell, we walk
+    this list from the top, taking units until the sale is filled. It only
+    reads; it doesn't sell anything yet.
+
+      WHERE quantity > 0   -- skip empty batches; no point offering 0 units.
+      ORDER BY expiry_date -- ASC = smallest date first = expires soonest first.
+    """
+    return conn.execute(
+        """
+        SELECT id, quantity, expiry_date, received_date
+        FROM batches
+        WHERE medicine_id = ? AND quantity > 0
+        ORDER BY expiry_date ASC
+        """,
+        (medicine_id,),
+    ).fetchall()
+
+
+def main():
+    conn = get_connection(DB_FILE)
+    try:
+        rows = current_stock(conn)
+
+        print("Current stock on hand")
+        print("-" * 40)
+        para_id = None
+        for med_id, name, unit, on_hand in rows:
+            unit_label = unit if unit else "units"
+            print(f"{name:<22} {on_hand:>5} {unit_label}")
+            if name == "Paracetamol":
+                para_id = med_id  # remember it, to demo the batch view below
+
+        # Show the FEFO list the database would sell Paracetamol from.
+        if para_id is not None:
+            print("\nParacetamol batches, in the order we'd sell them (FEFO)")
+            print("-" * 55)
+            print(f"{'batch id':>8}  {'qty':>4}  expiry")
+            for batch_id, qty, expiry, _received in batches_for(conn, para_id):
+                print(f"{batch_id:>8}  {qty:>4}  {expiry}")
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()
