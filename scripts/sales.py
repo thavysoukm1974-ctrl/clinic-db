@@ -19,9 +19,11 @@ from stock import batches_for
 def record_sale(conn, items, visit_id=None):
     """Record ONE sale (a receipt) that may contain several medicines.
 
-    `items` is a list of (medicine_id, quantity) pairs -- one entry per medicine
-    on the receipt. Each medicine is sold at its current price, frozen onto the
-    sale.
+    `items` is a list, one entry per medicine on the receipt, each either:
+        (medicine_id, quantity)              -- sold at the medicine's current price
+        (medicine_id, quantity, unit_price)  -- sold at THIS price instead
+    The override lets a line be free (price 0) or discounted. Whatever price is
+    used is frozen onto the sale, so a later catalog price change never rewrites it.
 
     Policy when a medicine is short on stock depends on that medicine's own
     `allow_partial_sale` flag (a column on the medicines table):
@@ -45,25 +47,35 @@ def record_sale(conn, items, visit_id=None):
     """
     if not items:
         raise ValueError("a sale needs at least one item")
-    for _medicine_id, quantity in items:
+
+    # Normalize every item to (medicine_id, quantity, unit_price), where a
+    # unit_price of None means "use the medicine's current catalog price".
+    lines = []
+    for item in items:
+        if len(item) == 3:
+            medicine_id, quantity, unit_price = item
+        else:
+            medicine_id, quantity = item
+            unit_price = None
         if quantity <= 0:
             raise ValueError("quantity must be positive")
+        lines.append((medicine_id, quantity, unit_price))
 
-    # 1. Decide how much of each medicine to sell.
+    # 1. Decide how much of each medicine to sell (carrying each line's price).
     #    (Assumes each medicine appears at most once on the receipt; if the same
     #     medicine is bought twice, combine it into one line first.)
-    to_sell = []     # (medicine_id, quantity_to_sell) we will actually sell
+    to_sell = []     # (medicine_id, quantity_to_sell, unit_price) we will sell
     shortfalls = []  # (medicine_id, requested, sold) for lines not fully filled
-    for medicine_id, quantity in items:
+    for medicine_id, quantity, unit_price in lines:
         available = sum(qty for (_id, qty, _exp, _rec) in batches_for(conn, medicine_id))
 
         if quantity <= available:
-            to_sell.append((medicine_id, quantity))          # full line, no shortfall
+            to_sell.append((medicine_id, quantity, unit_price))     # full line
         elif _allows_partial(conn, medicine_id) and available > 0:
-            to_sell.append((medicine_id, available))         # sell what's left ...
-            shortfalls.append((medicine_id, quantity, available))  # ... and note the shortfall
+            to_sell.append((medicine_id, available, unit_price))    # sell what's left ...
+            shortfalls.append((medicine_id, quantity, available))   # ... and note the shortfall
         else:
-            shortfalls.append((medicine_id, quantity, 0))    # left off entirely (sold none)
+            shortfalls.append((medicine_id, quantity, 0))           # left off entirely
 
     # 2. If not a single medicine can be sold, don't create an empty sale.
     if not to_sell:
@@ -76,26 +88,31 @@ def record_sale(conn, items, visit_id=None):
     ).lastrowid
 
     # 4. Fill each sellable line from its batches (soonest-expiry first).
-    for medicine_id, quantity in to_sell:
-        _fill_one_line(conn, sale_id, medicine_id, quantity)
+    for medicine_id, quantity, unit_price in to_sell:
+        _fill_one_line(conn, sale_id, medicine_id, quantity, unit_price)
 
     # 5. One commit makes the whole (fillable) sale permanent at once.
     conn.commit()
     return sale_id, shortfalls
 
 
-def _fill_one_line(conn, sale_id, medicine_id, quantity):
+def _fill_one_line(conn, sale_id, medicine_id, quantity, unit_price=None):
     """Take `quantity` units of ONE medicine and add it to an existing sale.
 
     Walk the medicine's batches soonest-expiry-first (FEFO): take units from each
     batch in turn, record which batch they came from, freeze the price, and
     subtract the stock. If one batch runs short, continue into the next batch.
     The caller has already checked there is enough stock and created the sale.
+
+    `unit_price` is the price to charge per unit. If it is None, the medicine's
+    current catalog price is used. A value of 0 is a real price (a free giveaway),
+    which is why we test for None, not for "falsy".
     """
-    # Freeze the price now, so a later price change never rewrites this receipt.
-    unit_price = conn.execute(
-        "SELECT unit_price FROM medicines WHERE id = ?", (medicine_id,)
-    ).fetchone()[0]
+    # Fill in the catalog price only when no explicit price was given (0 stays 0).
+    if unit_price is None:
+        unit_price = conn.execute(
+            "SELECT unit_price FROM medicines WHERE id = ?", (medicine_id,)
+        ).fetchone()[0]
 
     remaining = quantity
     for batch_id, batch_qty, _expiry, _received in batches_for(conn, medicine_id):
