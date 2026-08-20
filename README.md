@@ -42,20 +42,33 @@ python scripts/backup.py
 After that, open `db/clinic.sqlite` in **DBeaver** to see the tables and rows
 visually. (DBeaver → new SQLite connection → point it at that file.)
 
-## The five tables, in one breath
+## The tables, in one breath
 
-- **medicines** — the catalog: what we *can* sell (name, form, price).
+Two sides that meet at **medicines** (the bridge):
+
+**Pharmacy side** — what we stock and sell:
+- **medicines** — the catalog: what we *can* sell (name, form, unit, strength, price).
 - **batches** — the stock: what we *have*, each lot with its own expiry date.
-- **sales** — one row per receipt (when + total).
+- **sales** — one row per receipt (just when; the total is *computed* from the lines).
 - **sale_items** — the lines on a receipt; connects a sale to the medicines sold.
 - **suppliers** — who we buy stock from (optional, mostly for later).
+
+**Clinical side** — who we treat:
+- **patients** — the people we treat (name, date of birth, etc.).
+- **employees** — all staff, with a `role` (doctor/nurse/pharmacy/lab).
+- **visits** — one row per time a patient is seen; holds **diagnosis & treatment**.
+- **prescription_items** — medicine given during a visit (optional).
+
+> Key idea: diagnosis/treatment live on the **visit**, not the patient — a patient
+> visits many times. And a visit is **not** tied to a sale; a patient can be seen
+> and buy nothing.
 
 ## What comes next (build order)
 
 1. ✅ Schema — the tables. *(draft done — read it, question it, we refine it together)*
-2. ⬜ Simple actions: add a medicine, record a sale **and decrease stock**, view current stock.
+2. ⬜ Simple actions: add/find a patient, record a visit, add a medicine + stock batch, record a sale **and decrease stock**.
 3. ⬜ Views/alerts: what's expiring soon, what's low on stock.
-4. ⬜ Reports: sales over a period, revenue, best sellers.
+4. ⬜ Reports: monthly sales, low stock, expiring soon, a patient's visit history.
 5. ⬜ A simple user interface — last, and slowly (new territory for me).
 
 We build step 2 onward **together** in Cowork, so I understand each piece before
