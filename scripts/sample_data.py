@@ -58,6 +58,7 @@ def insert_batches(conn, med_ids):
     """Add stock lots. One batch expires SOON on purpose, so the 'expiring soon'
     warning has something to find, and Amoxicillin is left low on stock."""
     today = date.today()
+    expired = today - timedelta(days=10)  # ALREADY expired 10 days ago
     near = today + timedelta(days=30)    # expires fairly soon -> FEFO sells this FIRST
     soon = today + timedelta(days=20)    # ~3 weeks out -> should trigger a warning
     later = today + timedelta(days=400)  # safely far away
@@ -68,6 +69,7 @@ def insert_batches(conn, med_ids):
         ("Paracetamol",  100, 3.00, today.isoformat(), later.isoformat()),  #   different expiry dates
         ("Amoxicillin",    8, 8.00, today.isoformat(), soon.isoformat()),   # low AND expiring
         ("Cough Syrup",   30, 5.50, today.isoformat(), later.isoformat()),
+        ("Cough Syrup",    3, 5.50, today.isoformat(), expired.isoformat()),# an expired lot still on hand
         ("Vitamin C",    200, 1.50, today.isoformat(), later.isoformat()),
         ("Gauze Bandage", 50, 1.00, today.isoformat(), later.isoformat()),
     ]
