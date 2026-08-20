@@ -24,7 +24,8 @@ clinic-db/
 │   ├── alerts.py       Warnings: what's expiring soon, what's low on stock.
 │   ├── visits.py       Record a patient visit (+ medicine given); read a patient's history.
 │   ├── reports.py      Sales by month, totals for a date range, best sellers, money in/out.
-│   └── followups.py    "Schedule to come back": estimate when given medicine runs out.
+│   ├── followups.py    "Schedule to come back": estimate when given medicine runs out.
+│   └── app.py          Text-menu user interface: calls the functions above.
 ├── db/                 The live database file lives here (created on first run, not in git).
 └── backups/            Timestamped backups land here (not in git).
 ```
@@ -76,7 +77,7 @@ Two sides that meet at **medicines** (the bridge):
 2. ✅ Simple actions: add a patient, record a visit, record a sale **and decrease stock** (FEFO, non-expired only).
 3. ✅ Views/alerts: what's expiring soon, what's low on stock (usable stock only).
 4. ✅ Reports: sales by month, totals for a period, best sellers (`reports.py`); a patient's visit history (`visits.py`).
-5. ⬜ A simple user interface — last, and slowly (new territory for me).
+5. 🔨 A simple user interface — text menu done (`app.py`); a graphical Tkinter window next.
 
 Each step is built and explained one small piece at a time, so I understand it
 before moving on.
