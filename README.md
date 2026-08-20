@@ -23,7 +23,8 @@ clinic-db/
 │   ├── sales.py        Record a sale: take stock FEFO, freeze price, honour partial rules.
 │   ├── alerts.py       Warnings: what's expiring soon, what's low on stock.
 │   ├── visits.py       Record a patient visit (+ medicine given); read a patient's history.
-│   └── reports.py      Sales by month, totals for a date range, best sellers.
+│   ├── reports.py      Sales by month, totals for a date range, best sellers, money in/out.
+│   └── followups.py    "Schedule to come back": estimate when given medicine runs out.
 ├── db/                 The live database file lives here (created on first run, not in git).
 └── backups/            Timestamped backups land here (not in git).
 ```
@@ -94,6 +95,6 @@ before moving on.
   default is now allow-partial; the flag marks exceptions she chooses. STILL
   OPEN: what to do for a **walk-in** customer (no consultation) when stock is
   short. (#22.)
-- **Confirmed future feature:** "schedule to come back" -- a follow-up / restock-
-  waiting list (who is owed more of which medicine once it is restocked). Belongs
-  with the clinical side (a known patient). Owner does this by hand today.
+- *(Built)* "schedule to come back" -- `followups.py` estimates when given
+  medicine runs out (quantity / daily dose) and lists patients to call. Owner
+  confirmed the trigger is running out, not a fixed date.

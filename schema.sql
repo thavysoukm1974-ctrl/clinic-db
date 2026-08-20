@@ -182,6 +182,36 @@ CREATE TABLE IF NOT EXISTS visits (
 );
 
 
+-- ----------------------------------------------------------------------------
+--  FOLLOW_UPS  ("schedule to come back")
+--  When a patient is given medicine to take over time, the clinic wants to
+--  check in around when it RUNS OUT -- not on a fixed calendar date. So instead
+--  of storing a return date, we store the FACTS the run-out depends on:
+--  how much was given, the daily dose, and the start date. The expected run-out
+--  is then computed (start + quantity / daily_dose days) whenever it's needed --
+--  so it stays correct, and can be recomputed if the dose is corrected.
+--
+--  A follow-up is "open" until the patient returns or is contacted, then
+--  "closed". The check-in list is the open follow-ups whose estimated run-out
+--  has already passed.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS follow_ups (
+    id              INTEGER PRIMARY KEY,
+    patient_id      INTEGER NOT NULL,            -- who to check on (phone is on patients)
+    medicine_id     INTEGER,                     -- what they were given (optional)
+    visit_id        INTEGER,                     -- the visit it came from (optional)
+    quantity_given  INTEGER NOT NULL,            -- how many units they took home
+    daily_dose      REAL    NOT NULL,            -- units per day if taken correctly
+    start_date      TEXT    NOT NULL,            -- when they started taking it (ISO)
+    status          TEXT    NOT NULL DEFAULT 'open', -- 'open' or 'closed'
+    note            TEXT,
+
+    FOREIGN KEY (patient_id)  REFERENCES patients(id),
+    FOREIGN KEY (medicine_id) REFERENCES medicines(id),
+    FOREIGN KEY (visit_id)    REFERENCES visits(id)
+);
+
+
 -- ############################################################################
 --  SALES  (pharmacy side -- optionally linked back to a visit)
 -- ############################################################################
