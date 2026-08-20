@@ -26,7 +26,7 @@ clinic-db/
 │   ├── reports.py      Sales by month, totals for a date range, best sellers, money in/out.
 │   ├── followups.py    "Schedule to come back": estimate when given medicine runs out.
 │   ├── app.py          Text-menu user interface: calls the functions above.
-│   └── gui.py          First graphical window (Tkinter): a stock table + Refresh.
+│   └── gui.py          Graphical window (Tkinter): tabs for stock, alerts, sales, follow-ups, history, money.
 ├── db/                 The live database file lives here (created on first run, not in git).
 └── backups/            Timestamped backups land here (not in git).
 ```
@@ -78,7 +78,8 @@ Two sides that meet at **medicines** (the bridge):
 2. ✅ Simple actions: add a patient, record a visit, record a sale **and decrease stock** (FEFO, non-expired only).
 3. ✅ Views/alerts: what's expiring soon, what's low on stock (usable stock only).
 4. ✅ Reports: sales by month, totals for a period, best sellers (`reports.py`); a patient's visit history (`visits.py`).
-5. 🔨 A simple user interface — text menu done (`app.py`); a graphical Tkinter window next.
+5. 🔨 A simple user interface — text menu (`app.py`) and a tabbed Tkinter window
+   (`gui.py`) covering every feature both work. Left to do: polish the look.
 
 Each step is built and explained one small piece at a time, so I understand it
 before moving on.
