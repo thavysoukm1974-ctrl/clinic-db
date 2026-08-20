@@ -34,20 +34,21 @@ def insert_medicines(conn):
     the syrup's unit is 'bottle', the tablets' unit is 'tablet'.
     """
     rows = [
-        # (name, form, unit, strength, category, unit_price, reorder_threshold)
-        ("Paracetamol", "tablet",  "tablet", "500mg",     "painkiller",  5.00, 20),
-        ("Amoxicillin", "capsule", "capsule","250mg",     "antibiotic", 12.00, 10),
-        ("Cough Syrup", "syrup",   "bottle", "125mg/5ml", "cold & flu",  8.50,  5),
-        ("Vitamin C",   "tablet",  "tablet", "1000mg",    "vitamin",     3.00, 15),
-        ("Gauze Bandage","dressing","roll",   None,       "supplies",    2.00, 10),  # no strength -> fine
+        # (name, form, unit, strength, category, unit_price, reorder_threshold, allow_partial_sale)
+        ("Paracetamol", "tablet",  "tablet", "500mg",     "painkiller",  5.00, 20, 1),
+        ("Amoxicillin", "capsule", "capsule","250mg",     "antibiotic", 12.00, 10, 0),  # antibiotic: no partial course
+        ("Cough Syrup", "syrup",   "bottle", "125mg/5ml", "cold & flu",  8.50,  5, 1),
+        ("Vitamin C",   "tablet",  "tablet", "1000mg",    "vitamin",     3.00, 15, 1),
+        ("Gauze Bandage","dressing","roll",   None,       "supplies",    2.00, 10, 1),  # no strength -> fine
     ]
     ids = {}
-    for name, form, unit, strength, category, price, threshold in rows:
+    for name, form, unit, strength, category, price, threshold, allow_partial in rows:
         cur = conn.execute(
             """INSERT INTO medicines
-                   (name, form, unit, strength, category, unit_price, reorder_threshold)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (name, form, unit, strength, category, price, threshold),
+                   (name, form, unit, strength, category, unit_price,
+                    reorder_threshold, allow_partial_sale)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, form, unit, strength, category, price, threshold, allow_partial),
         )
         ids[name] = cur.lastrowid  # the id SQLite just assigned
     return ids

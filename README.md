@@ -84,5 +84,6 @@ moving on.
   (so only one batch is open at a time)? This keeps the shelf matching the
   database's soonest-expiry-first selling. (See DECISIONS.md #20.)
 - **Short-stock rule:** if a customer wants 8 but only 4 are left, does she sell
-  the 4, or sell none? Might differ by medicine (e.g. never a partial antibiotic
-  course). Current code sells nothing for that item; confirm with her. (#21.)
+  the 4, or sell none? This is now set PER MEDICINE (the `allow_partial_sale`
+  flag). Confirm with her: the default, and which medicines are partial-OK
+  (e.g. antibiotics = no). (#22.)

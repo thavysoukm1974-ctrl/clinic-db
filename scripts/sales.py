@@ -23,19 +23,25 @@ def record_sale(conn, items, visit_id=None):
     on the receipt. Each medicine is sold at its current price, frozen onto the
     sale.
 
-    Policy for a medicine that is short on stock: "full lines only". If a
-    medicine cannot be filled COMPLETELY, it is left off the sale entirely (never
-    sold partially) -- but the other medicines that CAN be filled are still sold.
-    The skipped medicines are reported back so the seller can tell the customer.
+    Policy when a medicine is short on stock depends on that medicine's own
+    `allow_partial_sale` flag (a column on the medicines table):
+      * flag = 0 (default): sell all-or-none of the line -- if it can't be filled
+        completely, leave it off the sale entirely.
+      * flag = 1: sell whatever IS in stock (a partial amount).
+    Either way, the OTHER medicines on the receipt that can be filled still sell.
+    Every line that did not fully fill is reported back so the seller can tell
+    the customer.
 
-    Returns a pair (sale_id, skipped):
+    Returns a pair (sale_id, shortfalls):
       * sale_id -- the new sale's id, or None if nothing at all could be sold,
-      * skipped -- a list of (medicine_id, requested, available) left off.
+      * shortfalls -- a list of (medicine_id, requested, sold) for lines that did
+        NOT fully fill. sold = 0 means the line was left off; 0 < sold < requested
+        means it was sold partially.
 
-    Note this is separate from transactional safety: whatever sale we DO make is
-    still all-or-nothing at the database level (one commit at the end), so we can
-    never record stock going down without the matching sale. "Full lines only" is
-    the business choice about WHICH medicines end up on the receipt.
+    This is separate from transactional safety: whatever sale we DO make is still
+    all-or-nothing at the database level (one commit at the end), so stock can
+    never go down without the matching sale. The flag only decides WHICH medicines
+    (and how many) end up on the receipt.
     """
     if not items:
         raise ValueError("a sale needs at least one item")
@@ -43,21 +49,25 @@ def record_sale(conn, items, visit_id=None):
         if quantity <= 0:
             raise ValueError("quantity must be positive")
 
-    # 1. Sort the requested medicines into "can fully fill" vs "short".
+    # 1. Decide how much of each medicine to sell.
     #    (Assumes each medicine appears at most once on the receipt; if the same
     #     medicine is bought twice, combine it into one line first.)
-    to_sell = []   # (medicine_id, quantity) we will actually sell
-    skipped = []   # (medicine_id, requested, available) left off, short on stock
+    to_sell = []     # (medicine_id, quantity_to_sell) we will actually sell
+    shortfalls = []  # (medicine_id, requested, sold) for lines not fully filled
     for medicine_id, quantity in items:
         available = sum(qty for (_id, qty, _exp, _rec) in batches_for(conn, medicine_id))
-        if quantity <= available:
-            to_sell.append((medicine_id, quantity))
-        else:
-            skipped.append((medicine_id, quantity, available))
 
-    # 2. If not a single medicine can be filled, don't create an empty sale.
+        if quantity <= available:
+            to_sell.append((medicine_id, quantity))          # full line, no shortfall
+        elif _allows_partial(conn, medicine_id) and available > 0:
+            to_sell.append((medicine_id, available))         # sell what's left ...
+            shortfalls.append((medicine_id, quantity, available))  # ... and note the shortfall
+        else:
+            shortfalls.append((medicine_id, quantity, 0))    # left off entirely (sold none)
+
+    # 2. If not a single medicine can be sold, don't create an empty sale.
     if not to_sell:
-        return None, skipped
+        return None, shortfalls
 
     # 3. One sale header for the medicines we can fill (NULL visit_id = walk-in).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -71,7 +81,7 @@ def record_sale(conn, items, visit_id=None):
 
     # 5. One commit makes the whole (fillable) sale permanent at once.
     conn.commit()
-    return sale_id, skipped
+    return sale_id, shortfalls
 
 
 def _fill_one_line(conn, sale_id, medicine_id, quantity):
@@ -106,8 +116,17 @@ def _fill_one_line(conn, sale_id, medicine_id, quantity):
         remaining -= take
 
 
+def _allows_partial(conn, medicine_id):
+    """True if this medicine may be sold in a smaller amount than asked when
+    stock is short (its allow_partial_sale flag is 1)."""
+    row = conn.execute(
+        "SELECT allow_partial_sale FROM medicines WHERE id = ?", (medicine_id,)
+    ).fetchone()
+    return bool(row[0])
+
+
 def _medicine_name(conn, medicine_id):
-    """Look up a medicine's name (used only for clear error messages)."""
+    """Look up a medicine's name (used only for clear messages)."""
     row = conn.execute(
         "SELECT name FROM medicines WHERE id = ?", (medicine_id,)
     ).fetchone()
@@ -132,20 +151,22 @@ def _show(conn, medicine_id, label):
 
 
 def main():
-    """Demonstration on the sample data: a receipt asking for Paracetamol (in
-    stock) and far more Amoxicillin than exists. "Full lines only" means the
-    Paracetamol sells and the Amoxicillin is skipped and reported."""
+    """Demonstration on the sample data: one receipt that hits all three cases:
+      * Paracetamol 2  -> in stock, sells fully.
+      * Amoxicillin 9999 -> short, flag = 0 (antibiotic) -> sold none, left off.
+      * Vitamin C 9999   -> short, flag = 1 -> sells what's left (partial).
+    """
     conn = get_connection(DB_FILE)
     try:
         para = _medicine_id(conn, "Paracetamol")
         amox = _medicine_id(conn, "Amoxicillin")
+        vitc = _medicine_id(conn, "Vitamin C")
 
         print("BEFORE:")
-        _show(conn, para, "  Paracetamol")
-        _show(conn, amox, "  Amoxicillin")
+        for mid, name in [(para, "Paracetamol"), (amox, "Amoxicillin"), (vitc, "Vitamin C")]:
+            _show(conn, mid, f"  {name} (partial allowed: {_allows_partial(conn, mid)})")
 
-        # Ask for 2 Paracetamol (fine) and 9999 Amoxicillin (only 8 in stock).
-        sale_id, skipped = record_sale(conn, [(para, 2), (amox, 9999)])
+        sale_id, shortfalls = record_sale(conn, [(para, 2), (amox, 9999), (vitc, 9999)])
 
         print()
         if sale_id is None:
@@ -156,13 +177,16 @@ def main():
                 (sale_id,),
             ).fetchone()[0]
             print(f"-> recorded receipt #{sale_id}, total (computed): {total}")
-        for medicine_id, requested, available in skipped:
+        for medicine_id, requested, sold in shortfalls:
             name = _medicine_name(conn, medicine_id)
-            print(f"-> skipped {name}: wanted {requested}, only {available} in stock")
+            if sold == 0:
+                print(f"-> {name}: wanted {requested}, sold NONE (partial not allowed)")
+            else:
+                print(f"-> {name}: wanted {requested}, sold {sold} (partial)")
 
         print("\nAFTER:")
-        _show(conn, para, "  Paracetamol")   # sold: went down
-        _show(conn, amox, "  Amoxicillin")   # skipped: untouched
+        for mid, name in [(para, "Paracetamol"), (amox, "Amoxicillin"), (vitc, "Vitamin C")]:
+            _show(conn, mid, f"  {name}")
     finally:
         conn.close()
 

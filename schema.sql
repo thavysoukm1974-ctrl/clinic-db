@@ -72,9 +72,18 @@ CREATE TABLE IF NOT EXISTS medicines (
     category            TEXT,                      -- "painkiller", "antibiotic" (plain text for now)
     unit_price          REAL    NOT NULL DEFAULT 0,-- current SELLING price per unit
     reorder_threshold   INTEGER DEFAULT 0,         -- warn when total stock drops below this
-    is_active           INTEGER NOT NULL DEFAULT 1 -- 1 = sold, 0 = hidden/discontinued.
-                                                   --   We flag, not DELETE, so old sales
-                                                   --   that reference it still make sense.
+    is_active           INTEGER NOT NULL DEFAULT 1, -- 1 = sold, 0 = hidden/discontinued.
+                                                    --  We flag, not DELETE, so old sales
+                                                    --  that reference it still make sense.
+    allow_partial_sale  INTEGER NOT NULL DEFAULT 0  -- may this be sold in a smaller
+                                                    --  amount than asked when stock is
+                                                    --  short? 0 = no (sell all-or-none of
+                                                    --  the line), 1 = yes (sell what's left).
+                                                    --  Per medicine, because e.g. a partial
+                                                    --  antibiotic course is discouraged but
+                                                    --  partial painkillers/vitamins are fine.
+                                                    --  Default 0 = the safe choice; opt each
+                                                    --  medicine IN to partial selling.
 );
 
 
