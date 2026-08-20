@@ -75,15 +75,16 @@ CREATE TABLE IF NOT EXISTS medicines (
     is_active           INTEGER NOT NULL DEFAULT 1, -- 1 = sold, 0 = hidden/discontinued.
                                                     --  We flag, not DELETE, so old sales
                                                     --  that reference it still make sense.
-    allow_partial_sale  INTEGER NOT NULL DEFAULT 0  -- may this be sold in a smaller
+    allow_partial_sale  INTEGER NOT NULL DEFAULT 1  -- may this be sold in a smaller
                                                     --  amount than asked when stock is
-                                                    --  short? 0 = no (sell all-or-none of
-                                                    --  the line), 1 = yes (sell what's left).
-                                                    --  Per medicine, because e.g. a partial
-                                                    --  antibiotic course is discouraged but
-                                                    --  partial painkillers/vitamins are fine.
-                                                    --  Default 0 = the safe choice; opt each
-                                                    --  medicine IN to partial selling.
+                                                    --  short? 1 = yes (sell what's left),
+                                                    --  0 = no (sell all-or-none of the line).
+                                                    --  Default 1 matches the shop's normal
+                                                    --  habit: give what is in stock now. The
+                                                    --  flag lets specific medicines be marked
+                                                    --  no-partial if the owner decides (a
+                                                    --  medical judgement -- e.g. some may not
+                                                    --  want a partial antibiotic course).
 );
 
 

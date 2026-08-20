@@ -36,7 +36,7 @@ def insert_medicines(conn):
     rows = [
         # (name, form, unit, strength, category, unit_price, reorder_threshold, allow_partial_sale)
         ("Paracetamol", "tablet",  "tablet", "500mg",     "painkiller",  5.00, 20, 1),
-        ("Amoxicillin", "capsule", "capsule","250mg",     "antibiotic", 12.00, 10, 0),  # antibiotic: no partial course
+        ("Amoxicillin", "capsule", "capsule","250mg",     "antibiotic", 12.00, 10, 0),  # example flagged no-partial (owner's medical call)
         ("Cough Syrup", "syrup",   "bottle", "125mg/5ml", "cold & flu",  8.50,  5, 1),
         ("Vitamin C",   "tablet",  "tablet", "1000mg",    "vitamin",     3.00, 15, 1),
         ("Gauze Bandage","dressing","roll",   None,       "supplies",    2.00, 10, 1),  # no strength -> fine

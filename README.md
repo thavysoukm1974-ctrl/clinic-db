@@ -84,9 +84,11 @@ moving on.
   (so only one batch is open at a time)? This keeps the shelf matching the
   database's soonest-expiry-first selling. (See DECISIONS.md #20.)
 - **Short-stock rule:** set PER MEDICINE (the `allow_partial_sale` flag). Owner
-  said (2026-08-20): for medicine she prescribes in a consultation, if short she
-  SCHEDULES THE PATIENT TO RETURN rather than selling a partial amount -> fits
-  the default of no-partial. STILL OPEN: what to do for a **walk-in** customer
-  who just wants to buy (no consultation) when stock is short. (#22.)
-- **Possible future feature:** "schedule to come back" -- a pending/callback list
-  of who wants which medicine once it is restocked. Owner does this by hand today.
+  said (2026-08-20): she GIVES the partial amount and schedules the patient to
+  come back for the rest when it runs out -> partial selling is normal, so the
+  default is now allow-partial; the flag marks exceptions she chooses. STILL
+  OPEN: what to do for a **walk-in** customer (no consultation) when stock is
+  short. (#22.)
+- **Confirmed future feature:** "schedule to come back" -- a follow-up / restock-
+  waiting list (who is owed more of which medicine once it is restocked). Belongs
+  with the clinical side (a known patient). Owner does this by hand today.
