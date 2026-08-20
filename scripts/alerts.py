@@ -50,30 +50,39 @@ def expiring_soon(conn, days=30):
 
 
 def low_stock(conn):
-    """Return active medicines whose total stock on hand is at or below their
+    """Return active medicines whose USABLE stock on hand is at or below their
     reorder threshold -- i.e. it is time to reorder. Lowest first.
+
+    "Usable" = in stock and NOT expired, the same rule as current_stock and
+    batches_for. This matters: expired units must not hide a shortage. A medicine
+    with 2 good + 8 expired and a threshold of 5 has only 2 sellable, so it counts
+    as 2 and is correctly flagged to reorder.
 
     Each row is (medicine_name, on_hand, reorder_threshold).
 
-      LEFT JOIN + COALESCE(SUM(...), 0) -- total units per medicine, counting a
-                                           medicine with no batches as 0.
-      HAVING on_hand <= reorder_threshold -- keep only the ones that reached the
-                                            reorder point. (<= not < so that
-                                            hitting the threshold exactly still
-                                            counts as "time to reorder".)
+      LEFT JOIN ... ON (not expired) -- sum only the usable batches, but keep the
+                                        medicine even if it has none (shows 0).
+      HAVING on_hand <= reorder_threshold -- keep only those at the reorder point.
+                                            (<= not < so hitting the threshold
+                                            exactly still counts as "reorder".)
     """
+    today = date.today().isoformat()
     return conn.execute(
         """
         SELECT m.name,
                COALESCE(SUM(b.quantity), 0) AS on_hand,
                m.reorder_threshold
         FROM medicines m
-        LEFT JOIN batches b ON b.medicine_id = m.id
+        LEFT JOIN batches b
+               ON b.medicine_id = m.id
+              AND b.quantity > 0
+              AND (b.expiry_date IS NULL OR b.expiry_date >= ?)
         WHERE m.is_active = 1
         GROUP BY m.id
         HAVING on_hand <= m.reorder_threshold
         ORDER BY on_hand ASC
-        """
+        """,
+        (today,),
     ).fetchall()
 
 

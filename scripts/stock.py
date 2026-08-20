@@ -18,22 +18,25 @@ from init_db import DB_FILE, get_connection
 
 def current_stock(conn):
     """Return a list of (medicine_id, name, unit, on_hand) -- one row per active
-    medicine, with on_hand = total units across all its batches.
+    medicine, with on_hand = total USABLE units (in stock and NOT expired).
+
+    Expired units are left out because this number answers "how many can we
+    sell?", and expired medicine is unsellable. A medicine whose only stock is
+    expired therefore shows 0 here (and will then show up in low_stock).
 
     Read the SQL slowly; each line does one job:
 
-      LEFT JOIN batches ... -- attach every batch belonging to the medicine.
-                               We use LEFT (not plain) JOIN so a medicine with
-                               NO batches still appears, showing 0 -- otherwise
-                               it would silently vanish from the list.
-      SUM(b.quantity)       -- add up the units across those batches.
-      COALESCE(..., 0)      -- if there are no batches, SUM is NULL; turn that
-                               into a clean 0.
-      GROUP BY m.id         -- collapse the joined rows down to one row PER
-                               medicine (that's what makes SUM sum per medicine).
+      LEFT JOIN batches ... ON (not expired) -- attach only the USABLE batches.
+                               Keeping the expiry test in the JOIN (not in WHERE)
+                               means a medicine with NO usable batches still
+                               appears, showing 0, instead of vanishing.
+      SUM(b.quantity)       -- add up the usable units.
+      COALESCE(..., 0)      -- no usable batches -> 0 instead of NULL.
+      GROUP BY m.id         -- one row per medicine (makes SUM sum per medicine).
       WHERE m.is_active = 1 -- ignore discontinued medicines.
       ORDER BY m.name       -- show them alphabetically.
     """
+    today = date.today().isoformat()
     rows = conn.execute(
         """
         SELECT m.id,
@@ -41,11 +44,15 @@ def current_stock(conn):
                m.unit,
                COALESCE(SUM(b.quantity), 0) AS on_hand
         FROM medicines m
-        LEFT JOIN batches b ON b.medicine_id = m.id
+        LEFT JOIN batches b
+               ON b.medicine_id = m.id
+              AND b.quantity > 0
+              AND (b.expiry_date IS NULL OR b.expiry_date >= ?)
         WHERE m.is_active = 1
         GROUP BY m.id
         ORDER BY m.name
-        """
+        """,
+        (today,),
     ).fetchall()
     return rows
 
