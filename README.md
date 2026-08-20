@@ -83,3 +83,6 @@ moving on.
 - **Stock habit:** will she keep a new batch boxed until the current one runs out
   (so only one batch is open at a time)? This keeps the shelf matching the
   database's soonest-expiry-first selling. (See DECISIONS.md #20.)
+- **Short-stock rule:** if a customer wants 8 but only 4 are left, does she sell
+  the 4, or sell none? Might differ by medicine (e.g. never a partial antibiotic
+  course). Current code sells nothing for that item; confirm with her. (#21.)
