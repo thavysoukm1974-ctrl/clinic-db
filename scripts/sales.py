@@ -1,9 +1,10 @@
 """
 sales.py -- record a sale AND subtract the stock. The core operation of the system.
 
-Selling here reduces the right batches, refuses to oversell, and remembers which
-batch each unit came from. (The simpler `record_sale` inside sample_data.py is
-only a seeder for test data and does NOT touch stock -- this is the real logic.)
+A sale (a "receipt") can contain several different medicines at once. Selling
+reduces the right batches, refuses to oversell, and remembers which batch each
+unit came from. (The simpler `record_sale` inside sample_data.py is only a
+seeder for test data and does NOT touch stock -- this is the real logic.)
 
 To try it on the sample database:
     python scripts/sales.py
@@ -12,52 +13,71 @@ To try it on the sample database:
 from datetime import datetime
 
 from init_db import DB_FILE, get_connection
-from stock import batches_for, current_stock
+from stock import batches_for
 
 
-def record_sale(conn, medicine_id, quantity, unit_price=None, visit_id=None):
-    """Sell `quantity` units of ONE medicine. Returns the new sale_id.
+def record_sale(conn, items, visit_id=None):
+    """Record ONE sale (a receipt) that may contain several medicines.
 
-    It does four things, in order -- and either ALL of them happen or NONE do:
+    `items` is a list of (medicine_id, quantity) pairs -- one entry per medicine
+    on the receipt. Each medicine is sold at its current price, frozen onto the
+    sale. Returns the new sale_id.
 
-      1. GUARD -- refuse if we don't have enough stock. We check BEFORE writing
-         anything, so a sale that can't be filled changes nothing in the database.
-      2. FREEZE THE PRICE -- default to the medicine's current price, then copy
-         it onto the sale so a future price change never rewrites this receipt.
-      3. CREATE THE SALE header (optionally tied to a visit via visit_id).
-      4. WALK THE BATCHES soonest-expiry-first (FEFO): take units from each batch
-         in turn, record which batch each line came from, and subtract the stock.
-         If one batch runs short, the sale spills into the next batch.
+    A receipt is ALL-OR-NOTHING: if ANY medicine on it lacks stock, nothing is
+    saved at all -- no sale row, no stock change. That is why the stock check
+    happens fully BEFORE any writing.
+
+    The work is split in two:
+      * this function handles the whole receipt (the check + the sale header),
+      * _fill_one_line() handles one medicine's line (the batch-by-batch taking).
     """
-    if quantity <= 0:
-        raise ValueError("quantity must be positive")
+    if not items:
+        raise ValueError("a sale needs at least one item")
+    for _medicine_id, quantity in items:
+        if quantity <= 0:
+            raise ValueError("quantity must be positive")
 
-    # Batches that still have stock, SOONEST-EXPIRY FIRST (this is the FEFO order).
-    batches = batches_for(conn, medicine_id)
-    available = sum(batch_qty for (_id, batch_qty, _exp, _rec) in batches)
+    # 1. GUARD: check EVERY line has enough stock BEFORE writing anything.
+    #    (Assumes each medicine appears at most once on the receipt; if the same
+    #     medicine is bought twice, combine it into one line first.)
+    for medicine_id, quantity in items:
+        available = sum(qty for (_id, qty, _exp, _rec) in batches_for(conn, medicine_id))
+        if quantity > available:
+            raise ValueError(
+                f"Not enough stock for {_medicine_name(conn, medicine_id)}: "
+                f"asked {quantity}, only {available} on hand."
+            )
 
-    # 1. GUARD: never sell more than we physically have.
-    if quantity > available:
-        raise ValueError(
-            f"Not enough stock: asked for {quantity}, only {available} on hand."
-        )
-
-    # 2. Freeze the price (see sale_items in schema.sql for WHY we copy it).
-    if unit_price is None:
-        unit_price = conn.execute(
-            "SELECT unit_price FROM medicines WHERE id = ?", (medicine_id,)
-        ).fetchone()[0]
-
-    # 3. The sale header. visit_id is NULL for a walk-in, or set if given in a visit.
+    # 2. One sale header for the whole receipt (NULL visit_id = a walk-in).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cur = conn.execute(
+    sale_id = conn.execute(
         "INSERT INTO sales (sale_datetime, visit_id) VALUES (?, ?)", (now, visit_id)
-    )
-    sale_id = cur.lastrowid
+    ).lastrowid
 
-    # 4. Take units from each batch until the order is filled.
+    # 3. Fill each medicine's line from its batches (soonest-expiry first).
+    for medicine_id, quantity in items:
+        _fill_one_line(conn, sale_id, medicine_id, quantity)
+
+    # 4. One commit makes the ENTIRE receipt permanent at once (all-or-nothing).
+    conn.commit()
+    return sale_id
+
+
+def _fill_one_line(conn, sale_id, medicine_id, quantity):
+    """Take `quantity` units of ONE medicine and add it to an existing sale.
+
+    Walk the medicine's batches soonest-expiry-first (FEFO): take units from each
+    batch in turn, record which batch they came from, freeze the price, and
+    subtract the stock. If one batch runs short, continue into the next batch.
+    The caller has already checked there is enough stock and created the sale.
+    """
+    # Freeze the price now, so a later price change never rewrites this receipt.
+    unit_price = conn.execute(
+        "SELECT unit_price FROM medicines WHERE id = ?", (medicine_id,)
+    ).fetchone()[0]
+
     remaining = quantity
-    for batch_id, batch_qty, _expiry, _received in batches:
+    for batch_id, batch_qty, _expiry, _received in batches_for(conn, medicine_id):
         if remaining == 0:
             break
         take = min(remaining, batch_qty)   # all we still need, or all this batch has
@@ -74,33 +94,58 @@ def record_sale(conn, medicine_id, quantity, unit_price=None, visit_id=None):
         )
         remaining -= take
 
-    # Nothing was saved until here; commit makes all of step 3+4 permanent at once.
-    conn.commit()
-    return sale_id
+
+def _medicine_name(conn, medicine_id):
+    """Look up a medicine's name (used only for clear error messages)."""
+    row = conn.execute(
+        "SELECT name FROM medicines WHERE id = ?", (medicine_id,)
+    ).fetchone()
+    return row[0] if row else f"medicine #{medicine_id}"
+
+
+def _medicine_id(conn, name):
+    """Look up a medicine's id by name (used by the demo below)."""
+    return conn.execute(
+        "SELECT id FROM medicines WHERE name = ?", (name,)
+    ).fetchone()[0]
 
 
 def _show(conn, medicine_id, label):
-    """Small helper: print a medicine's batches so we can see before/after."""
+    """Print a medicine's remaining batches, so before/after is easy to see."""
     print(label)
-    for batch_id, qty, expiry, _rec in batches_for(conn, medicine_id):
-        print(f"    batch {batch_id}: {qty:>4} left, expires {expiry}")
-    if not batches_for(conn, medicine_id):
+    rows = batches_for(conn, medicine_id)
+    if not rows:
         print("    (no stock left)")
+    for batch_id, qty, expiry, _rec in rows:
+        print(f"    batch {batch_id}: {qty:>4} left, expires {expiry}")
 
 
 def main():
-    """A tiny demonstration on the sample data: sell 5 Paracetamol, showing the
-    batches before and after so you can watch stock go down."""
+    """Demonstration on the sample data: sell a receipt with TWO medicines at
+    once, showing stock before and after and the computed receipt total."""
     conn = get_connection(DB_FILE)
     try:
-        med_id = conn.execute(
-            "SELECT id FROM medicines WHERE name = 'Paracetamol'"
-        ).fetchone()[0]
+        para = _medicine_id(conn, "Paracetamol")
+        vitc = _medicine_id(conn, "Vitamin C")
 
-        _show(conn, med_id, "Paracetamol BEFORE selling:")
-        sale_id = record_sale(conn, med_id, 5)
-        print(f"\n-> recorded sale #{sale_id}: sold 5 Paracetamol\n")
-        _show(conn, med_id, "Paracetamol AFTER selling:")
+        print("BEFORE:")
+        _show(conn, para, "  Paracetamol")
+        _show(conn, vitc, "  Vitamin C")
+
+        # One receipt, two different medicines.
+        sale_id = record_sale(conn, [(para, 2), (vitc, 3)])
+        print(f"\n-> recorded receipt #{sale_id} with 2 medicines\n")
+
+        print("AFTER:")
+        _show(conn, para, "  Paracetamol")
+        _show(conn, vitc, "  Vitamin C")
+
+        # The receipt total is COMPUTED from its lines -- never stored.
+        total = conn.execute(
+            "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
+            (sale_id,),
+        ).fetchone()[0]
+        print(f"\nReceipt total (computed from the lines): {total}")
     finally:
         conn.close()
 
