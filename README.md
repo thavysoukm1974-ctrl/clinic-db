@@ -49,7 +49,7 @@ Two sides that meet at **medicines** (the bridge):
 **Pharmacy side** — what we stock and sell:
 - **medicines** — the catalog: what we *can* sell (name, form, unit, strength, price).
 - **batches** — the stock: what we *have*, each lot with its own expiry date.
-- **sales** — one row per receipt (just when; the total is *computed* from the lines).
+- **sales** — one row per receipt (when + an optional `visit_id`; the total is *computed* from the lines).
 - **sale_items** — the lines on a receipt; connects a sale to the medicines sold.
 - **suppliers** — who we buy stock from (optional, mostly for later).
 
@@ -57,11 +57,12 @@ Two sides that meet at **medicines** (the bridge):
 - **patients** — the people we treat (name, date of birth, etc.).
 - **employees** — all staff, with a `role` (doctor/nurse/pharmacy/lab).
 - **visits** — one row per time a patient is seen; holds **diagnosis & treatment**.
-- **prescription_items** — medicine given during a visit (optional).
 
-> Key idea: diagnosis/treatment live on the **visit**, not the patient — a patient
-> visits many times. And a visit is **not** tied to a sale; a patient can be seen
-> and buy nothing.
+> Key ideas: diagnosis/treatment live on the **visit**, not the patient — a patient
+> visits many times. Giving medicine during a visit **counts as a sale**, so the
+> sale points back to its visit (`sales.visit_id`) — there's no separate
+> prescription table. A visit is never *forced* to have a sale: a patient can be
+> seen and buy nothing.
 
 ## What comes next (build order)
 

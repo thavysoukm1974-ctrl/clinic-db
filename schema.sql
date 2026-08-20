@@ -147,9 +147,11 @@ CREATE TABLE IF NOT EXISTS employees (
 --  overwrites it; put it on the visit and each patient naturally builds a
 --  HISTORY. A visit wires together a patient, the doctor who saw them, and a date.
 --
---  A visit is INDEPENDENT of any sale. A patient can be seen and buy nothing
---  (stock ran out, or nothing was needed). So there is deliberately NO link
---  forcing a visit to have a sale -- we record only what actually happened.
+--  A visit is never FORCED to have a sale. A patient can be seen and buy
+--  nothing (stock ran out, or nothing was needed) -- that's a visit with no
+--  sale. But when the clinic DOES give medicine during a visit, that counts as
+--  selling it, so a `sales` row can point back here (see sales.visit_id). The
+--  link is optional, one-directional, and never required.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS visits (
     id              INTEGER PRIMARY KEY,
@@ -164,40 +166,37 @@ CREATE TABLE IF NOT EXISTS visits (
 );
 
 
--- ----------------------------------------------------------------------------
---  PRESCRIPTION_ITEMS  (medicine given during a visit -- optional)
---  Links a VISIT to the MEDICINES handed over in it, with a quantity. Optional:
---  a visit may have zero of these (nothing given). This is separate from a
---  SALE on purpose -- see DECISIONS.md. Whether giving medicine here should
---  also reduce batch stock is a question still open with the clinic owner.
--- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS prescription_items (
-    id           INTEGER PRIMARY KEY,
-    visit_id     INTEGER NOT NULL,               -- which visit
-    medicine_id  INTEGER NOT NULL,               -- which medicine was given
-    quantity     INTEGER NOT NULL,               -- how many units
-
-    FOREIGN KEY (visit_id)    REFERENCES visits(id),
-    FOREIGN KEY (medicine_id) REFERENCES medicines(id)
-);
-
-
 -- ############################################################################
---  SALES  (pharmacy side -- kept separate from visits on purpose)
+--  SALES  (pharmacy side -- optionally linked back to a visit)
 -- ############################################################################
+--
+--  NOTE: there is no separate "prescription" table. In this clinic, giving
+--  medicine to a patient during a visit COUNTS AS SELLING it, so the medicine
+--  handed over is recorded once, as a normal sale, with the sale pointing back
+--  to its visit. Recording it twice (a prescription AND a sale) would let the
+--  two copies drift apart -- so we keep a single source of truth: the sale.
+--  To see what a patient was given in a visit, join visit -> sale -> sale_items.
 
 -- ----------------------------------------------------------------------------
 --  SALES  (one row per transaction / receipt)
---  A single trip to the counter: just when it happened. Notice there is NO
---  stored total here. Following the clinic owner's own principle -- "record
---  each small event, COMPUTE the summaries" -- the total is added up from this
---  sale's sale_items whenever we need it. That way the total can never drift
---  away from the actual lines, and no monthly/weekly total is stored anywhere;
+--  A single trip to the counter, or the medicines given during one visit.
+--
+--  visit_id: which visit this sale belongs to, or NULL for a walk-in counter
+--  sale with no visit. This is how "medicine given during diagnosis" is tied to
+--  the patient -- optionally, never forced.
+--
+--  Notice there is NO stored total here. Following the clinic owner's own
+--  principle -- "record each small event, COMPUTE the summaries" -- the total
+--  is added up from this sale's sale_items whenever we need it. The total can
+--  never drift from the lines, and no monthly/weekly total is stored anywhere;
 --  every report is computed from the raw sales.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sales (
     id              INTEGER PRIMARY KEY,
-    sale_datetime   TEXT NOT NULL                -- ISO text "2026-08-19 14:30:00"
+    sale_datetime   TEXT    NOT NULL,            -- ISO text "2026-08-19 14:30:00"
+    visit_id        INTEGER,                     -- the visit this sale came from (optional)
+
+    FOREIGN KEY (visit_id) REFERENCES visits(id)
 );
 
 
@@ -242,4 +241,4 @@ CREATE INDEX IF NOT EXISTS idx_batches_expiry      ON batches(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_saleitems_sale      ON sale_items(sale_id);
 CREATE INDEX IF NOT EXISTS idx_saleitems_medicine  ON sale_items(medicine_id);
 CREATE INDEX IF NOT EXISTS idx_visits_patient      ON visits(patient_id);
-CREATE INDEX IF NOT EXISTS idx_prescitems_visit    ON prescription_items(visit_id);
+CREATE INDEX IF NOT EXISTS idx_sales_visit         ON sales(visit_id);

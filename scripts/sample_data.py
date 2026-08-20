@@ -13,8 +13,9 @@ duplicates). To start clean: delete db/clinic.sqlite and run init_db.py again.
 
 Read this file to see, in plain Python, HOW rows get inserted -- especially:
   * a SALE = one row in `sales` + several rows in `sale_items`
-  * a VISIT = one row in `visits` (+ optional `prescription_items`)
-  * how a visit is NOT tied to a sale (a patient can be seen and buy nothing)
+  * a sale can be a walk-in (no visit) OR tied to a visit (medicine given
+    during diagnosis -- which the clinic counts as selling)
+  * a VISIT with no sale (a patient can be seen and buy nothing)
 """
 
 from datetime import date, datetime, timedelta
@@ -76,33 +77,38 @@ def insert_batches(conn, med_ids):
         )
 
 
-def insert_one_sample_sale(conn, med_ids):
-    """ONE example counter sale, to show the sales/sale_items relationship.
+def record_sale(conn, med_ids, lines, visit_id=None):
+    """Record ONE sale. This is the core operation of the whole system, so it's
+    worth reading closely -- we'll build the "real" version of this together.
 
     A sale is TWO steps:
-      1. insert the receipt into `sales`  -> gives us a sale_id
+      1. insert the receipt into `sales` -> gives us a sale_id
+         (visit_id is NULL for a walk-in counter sale, or set when the sale is
+          medicine given during a visit)
       2. insert each line into `sale_items`, all pointing at that sale_id
+
+    `lines` is a list of (medicine_name, quantity, unit_price).
     There is NO total to store -- we compute it from the lines when needed.
-    (Decrementing batch stock is deliberately NOT done here; that's logic we
+    (Decrementing batch stock is deliberately NOT done here yet; that's logic we
     build together so you understand it fully.)
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Step 1: the receipt.
-    cur = conn.execute("INSERT INTO sales (sale_datetime) VALUES (?)", (now,))
+    # Step 1: the receipt (optionally tied to a visit).
+    cur = conn.execute(
+        "INSERT INTO sales (sale_datetime, visit_id) VALUES (?, ?)",
+        (now, visit_id),
+    )
     sale_id = cur.lastrowid
 
-    # Step 2: the lines -- (medicine name, quantity, unit_price), each tied to sale_id.
-    lines = [
-        ("Paracetamol", 2, 5.00),
-        ("Vitamin C",   1, 3.00),
-    ]
+    # Step 2: the lines, each tied to sale_id.
     for name, qty, price in lines:
         conn.execute(
             """INSERT INTO sale_items (sale_id, medicine_id, quantity, unit_price)
                VALUES (?, ?, ?, ?)""",
             (sale_id, med_ids[name], qty, price),
         )
+    return sale_id
 
 
 # ---------------------------------------------------------------- clinical side
@@ -143,13 +149,14 @@ def insert_visits(conn, patient_ids, employee_ids, med_ids):
     """Two visits that show the key ideas:
 
       * Visit A: patient seen by a doctor, diagnosis + treatment recorded, and
-        one medicine given (a prescription_item).
-      * Visit B: patient seen, but NOTHING given -- no prescription, no sale.
+        medicine given -- which counts as SELLING, so we record a sale LINKED to
+        this visit (no separate prescription table).
+      * Visit B: patient seen, but NOTHING given (stock was out) -- no sale.
         This proves a visit does not have to result in a sale.
     """
     today = date.today().isoformat()
 
-    # Visit A -- with a medicine given.
+    # Visit A -- medicine given during diagnosis = a sale tied to the visit.
     cur = conn.execute(
         """INSERT INTO visits (patient_id, employee_id, visit_date, diagnosis, treatment)
            VALUES (?, ?, ?, ?, ?)""",
@@ -157,12 +164,9 @@ def insert_visits(conn, patient_ids, employee_ids, med_ids):
          "Fever", "Rest and paracetamol"),
     )
     visit_a = cur.lastrowid
-    conn.execute(
-        "INSERT INTO prescription_items (visit_id, medicine_id, quantity) VALUES (?, ?, ?)",
-        (visit_a, med_ids["Paracetamol"], 10),
-    )
+    record_sale(conn, med_ids, [("Paracetamol", 10, 5.00)], visit_id=visit_a)
 
-    # Visit B -- seen, but nothing given (e.g. stock was out). No prescription rows.
+    # Visit B -- seen, but nothing given (e.g. stock was out). No sale at all.
     conn.execute(
         """INSERT INTO visits (patient_id, employee_id, visit_date, diagnosis, treatment)
            VALUES (?, ?, ?, ?, ?)""",
@@ -176,7 +180,9 @@ def main():
     try:
         med_ids = insert_medicines(conn)
         insert_batches(conn, med_ids)
-        insert_one_sample_sale(conn, med_ids)
+
+        # A walk-in counter sale -- no visit attached (visit_id stays NULL).
+        record_sale(conn, med_ids, [("Paracetamol", 2, 5.00), ("Vitamin C", 1, 3.00)])
 
         patient_ids, employee_ids = insert_people(conn)
         insert_visits(conn, patient_ids, employee_ids, med_ids)
