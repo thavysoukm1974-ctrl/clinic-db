@@ -83,7 +83,10 @@ moving on.
 - **Stock habit:** will she keep a new batch boxed until the current one runs out
   (so only one batch is open at a time)? This keeps the shelf matching the
   database's soonest-expiry-first selling. (See DECISIONS.md #20.)
-- **Short-stock rule:** if a customer wants 8 but only 4 are left, does she sell
-  the 4, or sell none? This is now set PER MEDICINE (the `allow_partial_sale`
-  flag). Confirm with her: the default, and which medicines are partial-OK
-  (e.g. antibiotics = no). (#22.)
+- **Short-stock rule:** set PER MEDICINE (the `allow_partial_sale` flag). Owner
+  said (2026-08-20): for medicine she prescribes in a consultation, if short she
+  SCHEDULES THE PATIENT TO RETURN rather than selling a partial amount -> fits
+  the default of no-partial. STILL OPEN: what to do for a **walk-in** customer
+  who just wants to buy (no consultation) when stock is short. (#22.)
+- **Possible future feature:** "schedule to come back" -- a pending/callback list
+  of who wants which medicine once it is restocked. Owner does this by hand today.
