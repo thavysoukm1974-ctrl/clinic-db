@@ -22,7 +22,8 @@ clinic-db/
 │   ├── stock.py        See usable stock on hand; list a medicine's sellable batches (FEFO).
 │   ├── sales.py        Record a sale: take stock FEFO, freeze price, honour partial rules.
 │   ├── alerts.py       Warnings: what's expiring soon, what's low on stock.
-│   └── visits.py       Record a patient visit (+ medicine given); read a patient's history.
+│   ├── visits.py       Record a patient visit (+ medicine given); read a patient's history.
+│   └── reports.py      Sales by month, totals for a date range, best sellers.
 ├── db/                 The live database file lives here (created on first run, not in git).
 └── backups/            Timestamped backups land here (not in git).
 ```
@@ -73,7 +74,7 @@ Two sides that meet at **medicines** (the bridge):
 1. ✅ Schema — the tables.
 2. ✅ Simple actions: add a patient, record a visit, record a sale **and decrease stock** (FEFO, non-expired only).
 3. ✅ Views/alerts: what's expiring soon, what's low on stock (usable stock only).
-4. 🔨 Reports: monthly sales, best sellers. *(a patient's visit history is done in `visits.py`)*
+4. ✅ Reports: sales by month, totals for a period, best sellers (`reports.py`); a patient's visit history (`visits.py`).
 5. ⬜ A simple user interface — last, and slowly (new territory for me).
 
 Each step is built and explained one small piece at a time, so I understand it
