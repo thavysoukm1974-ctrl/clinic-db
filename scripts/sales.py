@@ -21,15 +21,21 @@ def record_sale(conn, items, visit_id=None):
 
     `items` is a list of (medicine_id, quantity) pairs -- one entry per medicine
     on the receipt. Each medicine is sold at its current price, frozen onto the
-    sale. Returns the new sale_id.
+    sale.
 
-    A receipt is ALL-OR-NOTHING: if ANY medicine on it lacks stock, nothing is
-    saved at all -- no sale row, no stock change. That is why the stock check
-    happens fully BEFORE any writing.
+    Policy for a medicine that is short on stock: "full lines only". If a
+    medicine cannot be filled COMPLETELY, it is left off the sale entirely (never
+    sold partially) -- but the other medicines that CAN be filled are still sold.
+    The skipped medicines are reported back so the seller can tell the customer.
 
-    The work is split in two:
-      * this function handles the whole receipt (the check + the sale header),
-      * _fill_one_line() handles one medicine's line (the batch-by-batch taking).
+    Returns a pair (sale_id, skipped):
+      * sale_id -- the new sale's id, or None if nothing at all could be sold,
+      * skipped -- a list of (medicine_id, requested, available) left off.
+
+    Note this is separate from transactional safety: whatever sale we DO make is
+    still all-or-nothing at the database level (one commit at the end), so we can
+    never record stock going down without the matching sale. "Full lines only" is
+    the business choice about WHICH medicines end up on the receipt.
     """
     if not items:
         raise ValueError("a sale needs at least one item")
@@ -37,30 +43,35 @@ def record_sale(conn, items, visit_id=None):
         if quantity <= 0:
             raise ValueError("quantity must be positive")
 
-    # 1. GUARD: check EVERY line has enough stock BEFORE writing anything.
+    # 1. Sort the requested medicines into "can fully fill" vs "short".
     #    (Assumes each medicine appears at most once on the receipt; if the same
     #     medicine is bought twice, combine it into one line first.)
+    to_sell = []   # (medicine_id, quantity) we will actually sell
+    skipped = []   # (medicine_id, requested, available) left off, short on stock
     for medicine_id, quantity in items:
         available = sum(qty for (_id, qty, _exp, _rec) in batches_for(conn, medicine_id))
-        if quantity > available:
-            raise ValueError(
-                f"Not enough stock for {_medicine_name(conn, medicine_id)}: "
-                f"asked {quantity}, only {available} on hand."
-            )
+        if quantity <= available:
+            to_sell.append((medicine_id, quantity))
+        else:
+            skipped.append((medicine_id, quantity, available))
 
-    # 2. One sale header for the whole receipt (NULL visit_id = a walk-in).
+    # 2. If not a single medicine can be filled, don't create an empty sale.
+    if not to_sell:
+        return None, skipped
+
+    # 3. One sale header for the medicines we can fill (NULL visit_id = walk-in).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sale_id = conn.execute(
         "INSERT INTO sales (sale_datetime, visit_id) VALUES (?, ?)", (now, visit_id)
     ).lastrowid
 
-    # 3. Fill each medicine's line from its batches (soonest-expiry first).
-    for medicine_id, quantity in items:
+    # 4. Fill each sellable line from its batches (soonest-expiry first).
+    for medicine_id, quantity in to_sell:
         _fill_one_line(conn, sale_id, medicine_id, quantity)
 
-    # 4. One commit makes the ENTIRE receipt permanent at once (all-or-nothing).
+    # 5. One commit makes the whole (fillable) sale permanent at once.
     conn.commit()
-    return sale_id
+    return sale_id, skipped
 
 
 def _fill_one_line(conn, sale_id, medicine_id, quantity):
@@ -121,31 +132,37 @@ def _show(conn, medicine_id, label):
 
 
 def main():
-    """Demonstration on the sample data: sell a receipt with TWO medicines at
-    once, showing stock before and after and the computed receipt total."""
+    """Demonstration on the sample data: a receipt asking for Paracetamol (in
+    stock) and far more Amoxicillin than exists. "Full lines only" means the
+    Paracetamol sells and the Amoxicillin is skipped and reported."""
     conn = get_connection(DB_FILE)
     try:
         para = _medicine_id(conn, "Paracetamol")
-        vitc = _medicine_id(conn, "Vitamin C")
+        amox = _medicine_id(conn, "Amoxicillin")
 
         print("BEFORE:")
         _show(conn, para, "  Paracetamol")
-        _show(conn, vitc, "  Vitamin C")
+        _show(conn, amox, "  Amoxicillin")
 
-        # One receipt, two different medicines.
-        sale_id = record_sale(conn, [(para, 2), (vitc, 3)])
-        print(f"\n-> recorded receipt #{sale_id} with 2 medicines\n")
+        # Ask for 2 Paracetamol (fine) and 9999 Amoxicillin (only 8 in stock).
+        sale_id, skipped = record_sale(conn, [(para, 2), (amox, 9999)])
 
-        print("AFTER:")
-        _show(conn, para, "  Paracetamol")
-        _show(conn, vitc, "  Vitamin C")
+        print()
+        if sale_id is None:
+            print("-> nothing could be sold")
+        else:
+            total = conn.execute(
+                "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
+                (sale_id,),
+            ).fetchone()[0]
+            print(f"-> recorded receipt #{sale_id}, total (computed): {total}")
+        for medicine_id, requested, available in skipped:
+            name = _medicine_name(conn, medicine_id)
+            print(f"-> skipped {name}: wanted {requested}, only {available} in stock")
 
-        # The receipt total is COMPUTED from its lines -- never stored.
-        total = conn.execute(
-            "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
-            (sale_id,),
-        ).fetchone()[0]
-        print(f"\nReceipt total (computed from the lines): {total}")
+        print("\nAFTER:")
+        _show(conn, para, "  Paracetamol")   # sold: went down
+        _show(conn, amox, "  Amoxicillin")   # skipped: untouched
     finally:
         conn.close()
 
