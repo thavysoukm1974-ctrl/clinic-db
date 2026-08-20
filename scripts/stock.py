@@ -11,6 +11,8 @@ the SUM of the quantities of all its batches, added up on demand. Selling
 (see sales.py) relies on the batch ordering that batches_for() produces below.
 """
 
+from datetime import date
+
 from init_db import DB_FILE, get_connection
 
 
@@ -49,23 +51,29 @@ def current_stock(conn):
 
 
 def batches_for(conn, medicine_id):
-    """Return a medicine's batches that still have stock, SOONEST-EXPIRY FIRST.
+    """Return a medicine's SELLABLE batches, SOONEST-EXPIRY FIRST.
 
-    This is the FEFO list -- "First Expiry, First Out". Selling walks this list
-    from the top, taking units until the order is filled, so the stock closest
-    to expiring is used first. This function only reads; it does not sell.
+    "Sellable" means both in stock AND not expired -- expired medicine is
+    physically on the shelf but must never be sold, so it is excluded here.
+    This is the FEFO list -- "First Expiry, First Out". Selling walks it from the
+    top, using the good stock closest to expiring first. Only reads; never sells.
 
-      WHERE quantity > 0   -- skip empty batches; no point offering 0 units.
-      ORDER BY expiry_date -- ASC = smallest date first = expires soonest first.
+      quantity > 0                        -- skip empty batches.
+      expiry_date IS NULL OR >= today     -- keep only stock not past its expiry
+                                             (NULL expiry = does not expire).
+      ORDER BY expiry_date                -- soonest (good) expiry first.
     """
+    today = date.today().isoformat()
     return conn.execute(
         """
         SELECT id, quantity, expiry_date, received_date
         FROM batches
-        WHERE medicine_id = ? AND quantity > 0
+        WHERE medicine_id = ?
+          AND quantity > 0
+          AND (expiry_date IS NULL OR expiry_date >= ?)
         ORDER BY expiry_date ASC
         """,
-        (medicine_id,),
+        (medicine_id, today),
     ).fetchall()
 
 
