@@ -28,7 +28,15 @@ from followups import due_follow_ups, add_follow_up
 from reports import sales_summary, financial_summary, reorder_spend
 from inventory import add_medicine, receive_stock, add_supplier
 
+# --- one place for the whole look (fonts + colours) ----------------------------
+# Change these and the entire window changes, because _apply_style() below feeds
+# them into ttk.Style -- a central "stylesheet" that every widget of a type uses.
+FONT = ("Segoe UI", 10)
 BOLD = ("Segoe UI", 11, "bold")
+BG = "#f4f6f8"        # window background (soft grey)
+ACCENT = "#2c6e8f"    # headings / selected tab / table header (teal-blue)
+STRIPE = "#eaf0f4"    # shading for every other table row
+TEXT = "#1f2a30"      # normal text
 
 
 def _looks_like_date(text):
@@ -46,6 +54,8 @@ class ClinicGUI:
         self.root = tk.Tk()
         self.root.title("Clinic system")
         self.root.geometry("720x520")
+        self.root.minsize(700, 480)
+        self._apply_style()
 
         # Shared dropdown data, loaded once here and refreshed after any add.
         self._medicines = self._medicine_rows()
@@ -70,6 +80,41 @@ class ClinicGUI:
         notebook.add(self._add_supplier_tab(notebook),  text="Add supplier")
         notebook.add(self._record_visit_tab(notebook),  text="Record visit")
         notebook.add(self._add_followup_tab(notebook),  text="Add follow-up")
+
+    # --- the whole look, in one place ----------------------------------------
+
+    def _apply_style(self):
+        """Configure ttk.Style once. Every widget of a given type reads from
+        here, so this single method controls the appearance of the whole window.
+        (Like a shared theme/material: edit here, everything updates.)"""
+        self.root.configure(bg=BG)
+        style = ttk.Style(self.root)
+        style.theme_use("clam")   # a base theme that lets us set our own colours
+
+        style.configure(".", font=FONT, background=BG, foreground=TEXT)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("TButton", padding=6)
+        style.map("TButton",
+                  background=[("active", ACCENT)],
+                  foreground=[("active", "white")])
+
+        # Tabs across the top.
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", padding=(12, 6))
+        style.map("TNotebook.Tab",
+                  background=[("selected", ACCENT)],
+                  foreground=[("selected", "white")])
+
+        # Tables.
+        style.configure("Treeview", rowheight=24,
+                        background="white", fieldbackground="white")
+        style.configure("Treeview.Heading",
+                        font=("Segoe UI", 10, "bold"),
+                        background=ACCENT, foreground="white", padding=4)
+        style.map("Treeview",
+                  background=[("selected", ACCENT)],
+                  foreground=[("selected", "white")])
 
     # --- data used by the dropdowns ------------------------------------------
 
@@ -122,13 +167,16 @@ class ClinicGUI:
         for column, heading, width in zip(columns, headings, widths):
             tree.heading(column, text=heading)
             tree.column(column, width=width, anchor="w")
+        # Shade every other row (the "odd" ones) for readability.
+        tree.tag_configure("odd", background=STRIPE)
         return tree
 
     @staticmethod
     def _fill(tree, rows):
         tree.delete(*tree.get_children())
-        for row in rows:
-            tree.insert("", "end", values=row)
+        for i, row in enumerate(rows):
+            # Tag alternate rows so the "odd" ones pick up the stripe colour.
+            tree.insert("", "end", values=row, tags=("odd",) if i % 2 else ())
 
     def _labeled_entries(self, frame, field_labels, start_row=1):
         """Add a label + text box per (key, label); return {key: Entry} and the
