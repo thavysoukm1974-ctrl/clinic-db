@@ -13,6 +13,14 @@ from datetime import date
 
 from init_db import DB_FILE, get_connection
 
+# Common values offered as dropdown SUGGESTIONS in the add-medicine form. They
+# are suggestions only -- the fields still accept any text a clinic types, so a
+# medicine form or unit we didn't list can still be entered.
+COMMON_FORMS = ("tablet", "capsule", "syrup", "cream", "ointment",
+                "drops", "injection", "sachet", "dressing")
+COMMON_UNITS = ("tablet", "capsule", "bottle", "box", "strip",
+                "tube", "roll", "sachet", "piece")
+
 
 def add_medicine(conn, name, form=None, unit=None, strength=None, category=None,
                  unit_price=0.0, reorder_threshold=0, allow_partial_sale=1):

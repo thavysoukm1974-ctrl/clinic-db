@@ -26,7 +26,7 @@ from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
 from followups import due_follow_ups, add_follow_up
 from reports import sales_summary, financial_summary, reorder_spend
-from inventory import add_medicine, receive_stock, add_supplier
+from inventory import add_medicine, receive_stock, add_supplier, COMMON_FORMS, COMMON_UNITS
 
 # --- one place for the whole look (fonts + colours) ----------------------------
 # Change these and the entire window changes, because _apply_style() below feeds
@@ -447,17 +447,46 @@ class ClinicGUI:
         frame = ttk.Frame(parent, padding=10)
         ttk.Label(frame, text="Add a medicine to the catalog", font=BOLD)\
             .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
-        self.med_fields, next_row = self._labeled_entries(frame, [
-            ("name", "Name *"), ("form", "Form"), ("unit", "Unit"),
-            ("strength", "Strength"), ("category", "Category"),
-            ("unit_price", "Price"), ("reorder_threshold", "Reorder at")])
+
+        self.med_fields = {}
+        row = 1
+
+        def entry_row(key, label):
+            nonlocal row
+            ttk.Label(frame, text=label + ":").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            widget = ttk.Entry(frame, width=26)
+            widget.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+            self.med_fields[key] = widget
+            row += 1
+
+        def combo_row(key, label, options):
+            # Editable combobox: shows the common choices, but any text is allowed.
+            nonlocal row
+            ttk.Label(frame, text=label + ":").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            widget = ttk.Combobox(frame, width=24, values=list(options))
+            widget.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+            self.med_fields[key] = widget
+            row += 1
+
+        entry_row("name", "Name *")
+        combo_row("form", "Form", COMMON_FORMS)     # shape: tablet, syrup, ...
+        combo_row("unit", "Unit", COMMON_UNITS)     # how you count/sell it
+        # A short hint, because "form" vs "unit" can be confusing.
+        ttk.Label(frame, text="(Form = its shape; Unit = how you count and sell it)",
+                  foreground="#666").grid(row=row, column=1, sticky="w", padx=4)
+        row += 1
+        entry_row("strength", "Strength")
+        entry_row("category", "Category")
+        entry_row("unit_price", "Price")
+        entry_row("reorder_threshold", "Reorder at")
+
         self.med_partial = tk.IntVar(value=1)
         ttk.Checkbutton(frame, text="Allow partial sale", variable=self.med_partial)\
-            .grid(row=next_row, column=1, sticky="w", padx=4, pady=2)
+            .grid(row=row, column=1, sticky="w", padx=4, pady=2)
         ttk.Button(frame, text="Add medicine", command=self._submit_medicine)\
-            .grid(row=next_row + 1, column=1, sticky="w", padx=4, pady=8)
+            .grid(row=row + 1, column=1, sticky="w", padx=4, pady=8)
         self.med_result = ttk.Label(frame, text="", foreground="green")
-        self.med_result.grid(row=next_row + 2, column=0, columnspan=2, sticky="w")
+        self.med_result.grid(row=row + 2, column=0, columnspan=2, sticky="w")
         return frame
 
     def _submit_medicine(self):
