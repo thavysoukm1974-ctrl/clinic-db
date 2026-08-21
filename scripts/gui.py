@@ -24,7 +24,7 @@ from stock import current_stock
 from sales import record_sale
 from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
-from followups import due_follow_ups, add_follow_up
+from followups import open_follow_ups, add_follow_up
 from reports import monthly_report_text, daily_report_text
 from inventory import add_medicine, receive_stock, add_supplier, COMMON_FORMS, COMMON_UNITS
 
@@ -392,21 +392,30 @@ class ClinicGUI:
 
     def _followups_tab(self, parent):
         frame = ttk.Frame(parent, padding=10)
-        ttk.Label(frame, text="Patients due for a check-in", font=BOLD).pack(pady=6)
+        ttk.Label(frame, text="Scheduled follow-ups", font=BOLD).pack(pady=6)
+        ttk.Label(frame,
+                  text="All open follow-ups. 'DUE' means the medicine should have run out -- call them.")\
+            .pack(anchor="w")
         self.followups_table = self._table(
-            frame, ("patient", "phone", "medicine", "runout", "overdue"),
-            ("Patient", "Phone", "Medicine", "Ran out", "Days ago"),
-            (150, 120, 130, 100, 80))
-        self.followups_table.pack(fill="both", expand=True)
+            frame, ("patient", "phone", "medicine", "runout", "status"),
+            ("Patient", "Phone", "Medicine", "Runs out", "Status"),
+            (140, 120, 120, 100, 120))
+        self.followups_table.pack(fill="both", expand=True, pady=(4, 0))
         ttk.Button(frame, text="Refresh", command=self._refresh_followups).pack(pady=6)
         self._refresh_followups()
         return frame
 
     def _refresh_followups(self):
-        self._fill(self.followups_table,
-                   [(patient, phone, medicine, run_out, days_overdue)
-                    for _fid, patient, phone, medicine, run_out, days_overdue
-                    in due_follow_ups(self.conn)])
+        rows = []
+        for _fid, patient, phone, medicine, run_out, days_overdue in open_follow_ups(self.conn):
+            if days_overdue > 0:
+                status = f"DUE ({days_overdue}d ago)"
+            elif days_overdue == 0:
+                status = "DUE today"
+            else:
+                status = f"in {-days_overdue}d"
+            rows.append((patient, phone or "", medicine or "-", run_out, status))
+        self._fill(self.followups_table, rows)
 
     # --- Patient history tab -------------------------------------------------
 
@@ -686,13 +695,35 @@ class ClinicGUI:
         frame = ttk.Frame(parent, padding=10)
         ttk.Label(frame, text="Add a patient", font=BOLD)\
             .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
-        self.patient_fields, next_row = self._labeled_entries(frame, [
-            ("name", "Name *"), ("date_of_birth", "Date of birth (YYYY-MM-DD)"),
-            ("sex", "Sex"), ("address", "Address"), ("phone", "Phone")])
+
+        self.patient_fields = {}
+        row = 1
+
+        def entry_row(key, label):
+            nonlocal row
+            ttk.Label(frame, text=label + ":").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            widget = ttk.Entry(frame, width=26)
+            widget.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+            self.patient_fields[key] = widget
+            row += 1
+
+        entry_row("name", "Name *")
+        entry_row("date_of_birth", "Date of birth (YYYY-MM-DD)")
+        # Sex is a fixed choice, so use a dropdown (blank = not specified).
+        ttk.Label(frame, text="Sex:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+        sex_box = ttk.Combobox(frame, state="readonly", width=24,
+                               values=["", "Female", "Male", "Other"])
+        sex_box.current(0)
+        sex_box.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+        self.patient_fields["sex"] = sex_box
+        row += 1
+        entry_row("address", "Address")
+        entry_row("phone", "Phone")
+
         ttk.Button(frame, text="Add patient", command=self._submit_patient)\
-            .grid(row=next_row, column=1, sticky="w", padx=4, pady=8)
+            .grid(row=row, column=1, sticky="w", padx=4, pady=8)
         self.patient_result = ttk.Label(frame, text="", foreground="green")
-        self.patient_result.grid(row=next_row + 1, column=0, columnspan=2, sticky="w")
+        self.patient_result.grid(row=row + 1, column=0, columnspan=2, sticky="w")
         return frame
 
     def _submit_patient(self):
@@ -708,8 +739,11 @@ class ClinicGUI:
                     sex=self.patient_fields["sex"].get().strip() or None,
                     address=self.patient_fields["address"].get().strip() or None,
                     phone=self.patient_fields["phone"].get().strip() or None)
-        for entry in self.patient_fields.values():
-            entry.delete(0, "end")
+        for widget in self.patient_fields.values():
+            if isinstance(widget, ttk.Combobox):
+                widget.set("")            # a read-only dropdown clears with set()
+            else:
+                widget.delete(0, "end")
         self._reload_patients()
         self.patient_result.config(text=f"Added {name}.", foreground="green")
 

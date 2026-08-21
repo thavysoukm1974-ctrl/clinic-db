@@ -55,15 +55,13 @@ def add_follow_up(conn, patient_id, medicine_id, quantity_given, daily_dose,
     return follow_up_id, expected_run_out(quantity_given, daily_dose, start_date)
 
 
-def due_follow_ups(conn, as_of=None):
-    """Return OPEN follow-ups whose medicine should have run out by `as_of`
-    (today by default) -- the patients due for a check-in, most overdue first.
+def open_follow_ups(conn, as_of=None):
+    """Return ALL open follow-ups (due AND still-upcoming), soonest run-out first.
 
     Each row: (follow_up_id, patient_name, phone, medicine_name,
-               expected_run_out, days_overdue).
-
-    We read the open follow-ups and work out each run-out date in Python, then
-    keep the ones at or before `as_of`.
+               expected_run_out, days_overdue), where days_overdue is
+       (as_of - run_out) in days:  > 0 overdue by that many, 0 due today,
+       < 0 that many days still to go.
     """
     if as_of is None:
         as_of = date.today().isoformat()
@@ -80,14 +78,20 @@ def due_follow_ups(conn, as_of=None):
         """
     ).fetchall()
 
-    due = []
+    result = []
     for fid, patient, phone, medicine, quantity, dose, start in rows:
         run_out = expected_run_out(quantity, dose, start)
-        if run_out <= as_of:
-            days_overdue = (as_of_date - date.fromisoformat(run_out)).days
-            due.append((fid, patient, phone, medicine, run_out, days_overdue))
-    due.sort(key=lambda row: row[4])   # by run-out date, most overdue first
-    return due
+        days_overdue = (as_of_date - date.fromisoformat(run_out)).days
+        result.append((fid, patient, phone, medicine, run_out, days_overdue))
+    result.sort(key=lambda row: row[4])   # soonest run-out first
+    return result
+
+
+def due_follow_ups(conn, as_of=None):
+    """Return only the follow-ups that are DUE now (medicine should have run out
+    by `as_of`) -- the patients to actually call. A filter of open_follow_ups.
+    """
+    return [row for row in open_follow_ups(conn, as_of) if row[5] >= 0]
 
 
 def close_follow_up(conn, follow_up_id, note=None):
