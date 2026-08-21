@@ -63,7 +63,7 @@ def _pick_from(conn, sql, header):
 
 def do_view_stock(conn):
     print("\nCurrent stock on hand (usable units):")
-    for _id, name, unit, on_hand in current_stock(conn):
+    for _id, name, unit, on_hand, _threshold in current_stock(conn):
         print(f"  {name:<18} {on_hand:>5} {unit or 'units'}")
 
 

@@ -91,7 +91,7 @@ def main():
         receive_stock(conn, medicine_id, quantity=50, purchase_price=2.5,
                       expiry_date="2027-01-01", supplier_id=supplier_id)
         print("Added Ibuprofen with a batch of 50. Current stock:")
-        for _id, name, unit, on_hand in current_stock(conn):
+        for _id, name, unit, on_hand, _threshold in current_stock(conn):
             print(f"  {name:<16} {on_hand} {unit or ''}")
     finally:
         conn.close()

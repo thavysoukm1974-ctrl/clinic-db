@@ -244,6 +244,21 @@ class ClinicGUI:
             # Tag alternate rows so the "odd" ones pick up the stripe colour.
             tree.insert("", "end", values=row, tags=("odd",) if i % 2 else ())
 
+    @staticmethod
+    def _status_tags(tree):
+        """Give a table two colour tags: red = needs attention now (out / expired),
+        yellow = warning (low stock / expiring soon)."""
+        tree.tag_configure("red", background="#f5b7b1")
+        tree.tag_configure("yellow", background="#f9e79f")
+
+    @staticmethod
+    def _fill_coloured(tree, rows):
+        """Like _fill, but each row is (values_tuple, tag) where tag is
+        'red', 'yellow', or '' for normal."""
+        tree.delete(*tree.get_children())
+        for values, tag in rows:
+            tree.insert("", "end", values=values, tags=(tag,) if tag else ())
+
     def _labeled_entries(self, frame, field_labels, start_row=1):
         """Add a label + text box per (key, label); return {key: Entry} and the
         next free grid row."""
@@ -265,15 +280,25 @@ class ClinicGUI:
         self.stock_table = self._table(
             frame, ("name", "on_hand", "unit"),
             ("Medicine", "On hand", "Unit"), (260, 90, 120))
+        self._status_tags(self.stock_table)
         self.stock_table.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Red = out of stock    Yellow = low, reorder soon",
+                  foreground="#666").pack(anchor="w", pady=(4, 0))
         ttk.Button(frame, text="Refresh", command=self._refresh_stock).pack(pady=6)
         self._refresh_stock()
         return frame
 
     def _refresh_stock(self):
-        self._fill(self.stock_table,
-                   [(name, on_hand, unit or "units")
-                    for _id, name, unit, on_hand in current_stock(self.conn)])
+        rows = []
+        for _id, name, unit, on_hand, threshold in current_stock(self.conn):
+            if on_hand == 0:
+                tag = "red"                       # out of stock
+            elif on_hand <= threshold:
+                tag = "yellow"                    # at or below reorder point
+            else:
+                tag = ""
+            rows.append(((name, on_hand, unit or "units"), tag))
+        self._fill_coloured(self.stock_table, rows)
 
     # --- Alerts tab ----------------------------------------------------------
 
@@ -283,11 +308,13 @@ class ClinicGUI:
         self.expiry_table = self._table(
             frame, ("name", "qty", "expiry", "when"),
             ("Medicine", "Qty", "Expiry", "Status"), (170, 60, 110, 150), height=6)
+        self._status_tags(self.expiry_table)
         self.expiry_table.pack(fill="both", expand=True)
         ttk.Label(frame, text="Low on stock", font=BOLD).pack(anchor="w", pady=(10, 0))
         self.low_table = self._table(
             frame, ("name", "on_hand", "threshold"),
             ("Medicine", "On hand", "Reorder at"), (220, 90, 110), height=5)
+        self._status_tags(self.low_table)
         self.low_table.pack(fill="both", expand=True)
         ttk.Button(frame, text="Refresh", command=self._refresh_alerts).pack(pady=6)
         self._refresh_alerts()
@@ -296,10 +323,18 @@ class ClinicGUI:
     def _refresh_alerts(self):
         expiry_rows = []
         for name, _batch_id, qty, expiry, days_left in expiring_soon(self.conn, days=30):
-            when = f"EXPIRED {-days_left}d ago" if days_left < 0 else f"in {days_left}d"
-            expiry_rows.append((name, qty, expiry, when))
-        self._fill(self.expiry_table, expiry_rows)
-        self._fill(self.low_table, low_stock(self.conn))
+            if days_left < 0:
+                when, tag = f"EXPIRED {-days_left}d ago", "red"      # already expired
+            else:
+                when, tag = f"in {days_left}d", "yellow"            # expiring soon
+            expiry_rows.append(((name, qty, expiry, when), tag))
+        self._fill_coloured(self.expiry_table, expiry_rows)
+
+        low_rows = []
+        for name, on_hand, threshold in low_stock(self.conn):
+            tag = "red" if on_hand == 0 else "yellow"               # out vs low
+            low_rows.append(((name, on_hand, threshold), tag))
+        self._fill_coloured(self.low_table, low_rows)
 
     # --- Record sale tab -----------------------------------------------------
 

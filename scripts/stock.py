@@ -17,8 +17,9 @@ from init_db import DB_FILE, get_connection
 
 
 def current_stock(conn):
-    """Return a list of (medicine_id, name, unit, on_hand) -- one row per active
-    medicine, with on_hand = total USABLE units (in stock and NOT expired).
+    """Return a list of (medicine_id, name, unit, on_hand, reorder_threshold) --
+    one row per active medicine, with on_hand = total USABLE units (in stock and
+    NOT expired). The threshold is included so callers can flag low stock.
 
     Expired units are left out because this number answers "how many can we
     sell?", and expired medicine is unsellable. A medicine whose only stock is
@@ -42,7 +43,8 @@ def current_stock(conn):
         SELECT m.id,
                m.name,
                m.unit,
-               COALESCE(SUM(b.quantity), 0) AS on_hand
+               COALESCE(SUM(b.quantity), 0) AS on_hand,
+               m.reorder_threshold
         FROM medicines m
         LEFT JOIN batches b
                ON b.medicine_id = m.id
@@ -92,7 +94,7 @@ def main():
         print("Current stock on hand")
         print("-" * 40)
         para_id = None
-        for med_id, name, unit, on_hand in rows:
+        for med_id, name, unit, on_hand, _threshold in rows:
             unit_label = unit if unit else "units"
             print(f"{name:<22} {on_hand:>5} {unit_label}")
             if name == "Paracetamol":
