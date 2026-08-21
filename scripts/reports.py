@@ -153,6 +153,101 @@ def reorder_spend_by_supplier(conn, start_date, end_date):
     ).fetchall()
 
 
+def revenue_by_channel(conn, start_date, end_date):
+    """Split sales revenue by how the sale happened, for the date range.
+    Returns {"visit": (num_sales, revenue), "walkin": (num_sales, revenue)}.
+
+    A sale with a visit_id came from a patient visit; a sale with none was a
+    walk-in counter sale. That is the whole difference between the two channels.
+    """
+    result = {"visit": (0, 0.0), "walkin": (0, 0.0)}
+    for channel, num_sales, revenue in conn.execute(
+        """
+        SELECT CASE WHEN s.visit_id IS NULL THEN 'walkin' ELSE 'visit' END AS channel,
+               COUNT(DISTINCT s.id),
+               COALESCE(SUM(si.quantity * si.unit_price), 0)
+        FROM sales s
+        JOIN sale_items si ON si.sale_id = s.id
+        WHERE date(s.sale_datetime) BETWEEN ? AND ?
+        GROUP BY channel
+        """,
+        (start_date, end_date),
+    ):
+        result[channel] = (num_sales, revenue)
+    return result
+
+
+def reorder_spend_by_medicine(conn, start_date, end_date):
+    """Return [(medicine_name, spend)] for stock received in the range, biggest
+    first -- how much restocking money went to each medicine."""
+    return conn.execute(
+        """
+        SELECT m.name,
+               COALESCE(SUM(b.received_quantity * b.purchase_price), 0) AS spend
+        FROM batches b
+        JOIN medicines m ON m.id = b.medicine_id
+        WHERE b.received_date BETWEEN ? AND ?
+        GROUP BY b.medicine_id
+        ORDER BY spend DESC
+        """,
+        (start_date, end_date),
+    ).fetchall()
+
+
+def monthly_report_text(conn, month):
+    """Build a full, human-readable monthly report as one text string.
+
+    `month` is "YYYY-MM". Everything is computed from the raw records for that
+    month, so the report is always up to date. Designed to be shown on screen
+    and saved to a file for the owner to read later.
+    """
+    start, end = f"{month}-01", f"{month}-31"   # ISO text compare covers the month
+
+    num_sales, revenue = sales_summary(conn, start, end)
+    _revenue, cogs, profit = financial_summary(conn, start, end)
+    channel = revenue_by_channel(conn, start, end)
+    spend = reorder_spend(conn, start, end)
+    visit_count, visit_rev = channel["visit"]
+    walkin_count, walkin_rev = channel["walkin"]
+
+    lines = []
+    lines.append("CLINIC MONTHLY REPORT")
+    lines.append(f"Month: {month}")
+    lines.append("=" * 48)
+    lines.append("")
+    lines.append("MONEY IN  (sales)")
+    lines.append(f"  Total sales:          {num_sales}")
+    lines.append(f"  Total revenue:        {revenue:.2f}")
+    lines.append(f"    from patient visits:{visit_rev:>10.2f}   ({visit_count} sales)")
+    lines.append(f"    from walk-in buyers:{walkin_rev:>10.2f}   ({walkin_count} sales)")
+    lines.append("")
+    lines.append("  Best sellers (by quantity):")
+    best = best_sellers(conn, start, end)
+    if not best:
+        lines.append("    (no sales)")
+    for name, quantity, item_revenue in best:
+        lines.append(f"    {name:<22}{quantity:>5} sold   {item_revenue:>9.2f}")
+    lines.append("")
+    lines.append("MONEY OUT  (restocking)")
+    lines.append(f"  Total reorder spend:  {spend:.2f}")
+    lines.append("  By supplier:")
+    for supplier, amount in reorder_spend_by_supplier(conn, start, end):
+        lines.append(f"    {supplier:<22}{amount:>14.2f}")
+    lines.append("  By medicine:")
+    for name, amount in reorder_spend_by_medicine(conn, start, end):
+        lines.append(f"    {name:<22}{amount:>14.2f}")
+    lines.append("")
+    lines.append("PROFIT  (on what was sold)")
+    lines.append(f"  Revenue:              {revenue:.2f}")
+    lines.append(f"  Cost of goods sold:   {cogs:.2f}")
+    lines.append(f"  Gross profit:         {profit:.2f}")
+    lines.append("")
+    lines.append("Note: 'reorder spend' is cash paid to BUY stock this month.")
+    lines.append("'Cost of goods sold' is the cost of the stock actually SOLD")
+    lines.append("this month. They are different numbers, on purpose.")
+    return "\n".join(lines)
+
+
 def main():
     conn = get_connection(DB_FILE)
     try:

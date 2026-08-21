@@ -16,7 +16,7 @@ command=some_function = an "On Clicked" event; root.mainloop() = the event loop.
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 from datetime import date
 
 from init_db import DB_FILE, get_connection
@@ -25,7 +25,7 @@ from sales import record_sale
 from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
 from followups import due_follow_ups, add_follow_up
-from reports import sales_summary, financial_summary, reorder_spend
+from reports import monthly_report_text
 from inventory import add_medicine, receive_stock, add_supplier, COMMON_FORMS, COMMON_UNITS
 
 # --- one place for the whole look (fonts + colours) ----------------------------
@@ -46,6 +46,11 @@ def _looks_like_date(text):
         return True
     except ValueError:
         return False
+
+
+def _looks_like_month(text):
+    """True if `text` is a valid year-month like 2026-08."""
+    return _looks_like_date(text + "-01")
 
 
 class ClinicGUI:
@@ -420,26 +425,62 @@ class ClinicGUI:
 
     def _money_tab(self, parent):
         frame = ttk.Frame(parent, padding=10)
-        ttk.Label(frame, text="Money this month", font=BOLD).pack(pady=6)
-        self.money_label = ttk.Label(frame, text="", justify="left", font=("Consolas", 10))
-        self.money_label.pack(anchor="w")
-        ttk.Button(frame, text="Refresh", command=self._refresh_money).pack(pady=6)
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky="w", pady=(0, 6))
+        ttk.Label(header, text="Monthly report", font=BOLD).pack(side="left")
+        ttk.Label(header, text="   Month (YYYY-MM):").pack(side="left")
+        self.report_month = ttk.Entry(header, width=10)
+        self.report_month.insert(0, date.today().strftime("%Y-%m"))
+        self.report_month.pack(side="left", padx=4)
+        ttk.Button(header, text="Show", command=self._refresh_money).pack(side="left", padx=4)
+        ttk.Button(header, text="Save report...", command=self._save_report).pack(side="left", padx=4)
+
+        # A scrollable, read-only text area holds the report (monospace so the
+        # columns line up).
+        text_frame = ttk.Frame(frame)
+        text_frame.grid(row=1, column=0, sticky="nsew")
+        self.report_text = tk.Text(text_frame, wrap="none", font=("Consolas", 10),
+                                   background="white", height=20, width=52)
+        scroll = ttk.Scrollbar(text_frame, command=self.report_text.yview)
+        self.report_text.configure(yscrollcommand=scroll.set)
+        self.report_text.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        self.report_status = ttk.Label(frame, text="", foreground="green")
+        self.report_status.grid(row=2, column=0, sticky="w", pady=4)
+
+        self._last_report = ""
         self._refresh_money()
         return frame
 
     def _refresh_money(self):
-        today = date.today()
-        start, end = today.replace(day=1).isoformat(), today.isoformat()
-        num_sales, revenue = sales_summary(self.conn, start, end)
-        _revenue, cogs, profit = financial_summary(self.conn, start, end)
-        spend = reorder_spend(self.conn, start, end)
-        self.money_label.config(text=(
-            f"{start}  to  {end}\n\n"
-            f"Sales:          {num_sales}\n"
-            f"Revenue:        {revenue}\n"
-            f"Cost of sold:   {cogs}\n"
-            f"Gross profit:   {profit}\n"
-            f"Reorder spend:  {spend}"))
+        """Build the report for the chosen month and show it."""
+        month = self.report_month.get().strip() or date.today().strftime("%Y-%m")
+        if not _looks_like_month(month):
+            self.report_status.config(text="Month must look like YYYY-MM.", foreground="red")
+            return
+        self._last_report = monthly_report_text(self.conn, month)
+        self.report_text.configure(state="normal")
+        self.report_text.delete("1.0", "end")
+        self.report_text.insert("1.0", self._last_report)
+        self.report_text.configure(state="disabled")   # read-only
+        self.report_status.config(text="", foreground="green")
+
+    def _save_report(self):
+        """Let the owner save the current report as a text file to keep/read later."""
+        month = self.report_month.get().strip()
+        path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            initialfile=f"clinic-report-{month}.txt",
+            filetypes=[("Text file", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return   # the owner cancelled the dialog
+        with open(path, "w", encoding="utf-8") as report_file:
+            report_file.write(self._last_report)
+        self.report_status.config(text=f"Saved to {path}", foreground="green")
 
     # --- Add medicine tab ----------------------------------------------------
 
