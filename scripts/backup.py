@@ -16,11 +16,11 @@ and after any big change.
 
 import sqlite3
 from datetime import datetime
-from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_FILE = PROJECT_ROOT / "db" / "clinic.sqlite"
-BACKUP_DIR = PROJECT_ROOT / "backups"
+# The database and backup locations are decided in ONE place (init_db.py), so
+# development and the packaged app each keep their data -- and their backups --
+# together in the right folder.
+from init_db import DB_FILE, BACKUP_DIR
 
 
 def main():

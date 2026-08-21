@@ -17,14 +17,38 @@ the tables are there.
 """
 
 import sqlite3
+import sys
 from pathlib import Path
 
 # __file__ is this script. .parent is the scripts/ folder. .parent again is the
 # project root. Building paths this way means the script works no matter what
 # folder you run it from.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_FILE = PROJECT_ROOT / "schema.sql"
-DB_FILE = PROJECT_ROOT / "db" / "clinic.sqlite"
+
+# The app runs in one of two situations, and the data lives somewhere sensible
+# for each -- the user is never asked (they should not need to know or care
+# where the internal database file is):
+#
+#   * Running from source (development): everything stays inside the project
+#     folder, as before -- db/ for the database, backups/ for backups.
+#
+#   * Running as a packaged .exe (PyInstaller sets sys.frozen): data goes to
+#     Documents\ClinicDB. Documents rather than the hidden AppData, so the
+#     owner can SEE the folder and copy it to a USB stick for safekeeping.
+#     The .exe itself unpacks to a throwaway temp folder each run, so data
+#     must never live next to the program.
+#
+# PyInstaller also bundles schema.sql inside the .exe; at run time bundled
+# files appear under sys._MEIPASS, so the schema path differs too.
+if getattr(sys, "frozen", False):                    # packaged .exe
+    DATA_DIR = Path.home() / "Documents" / "ClinicDB"
+    SCHEMA_FILE = Path(sys._MEIPASS) / "schema.sql"  # bundled inside the exe
+else:                                                # running from source
+    DATA_DIR = PROJECT_ROOT
+    SCHEMA_FILE = PROJECT_ROOT / "schema.sql"
+
+DB_FILE = DATA_DIR / "db" / "clinic.sqlite"
+BACKUP_DIR = DATA_DIR / "backups"
 
 
 def get_connection(db_path: Path) -> sqlite3.Connection:
@@ -39,12 +63,16 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def main() -> None:
-    # Make sure the db/ folder exists before SQLite tries to create a file in it.
+def ensure_database() -> None:
+    """Make sure the database file and all its tables exist.
+
+    Safe to run every single start-up: the folder creation ignores an existing
+    folder, and every statement in schema.sql uses IF NOT EXISTS, so on an
+    already-set-up machine this changes nothing. On a brand-new machine (first
+    run of the packaged app) it quietly builds the empty database.
+    """
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-
     schema_sql = SCHEMA_FILE.read_text(encoding="utf-8")
-
     conn = get_connection(DB_FILE)
     try:
         # executescript runs ALL the statements in the file, not just one.
@@ -53,6 +81,9 @@ def main() -> None:
     finally:
         conn.close()
 
+
+def main() -> None:
+    ensure_database()
     print(f"Database ready at: {DB_FILE}")
 
 

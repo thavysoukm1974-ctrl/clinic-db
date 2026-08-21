@@ -19,7 +19,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 from datetime import date
 
-from init_db import DB_FILE, get_connection
+from init_db import DB_FILE, get_connection, ensure_database
 from stock import current_stock
 from sales import record_sale
 from alerts import expiring_soon, low_stock
@@ -951,6 +951,9 @@ class ClinicGUI:
 
 
 def main():
+    # First thing on every start: make sure the database and tables exist.
+    # On the very first run on a new computer this creates them from scratch.
+    ensure_database()
     conn = get_connection(DB_FILE)
     try:
         ClinicGUI(conn).run()

@@ -14,7 +14,7 @@ the exact same logic a graphical window would call later.
 
 from datetime import date
 
-from init_db import DB_FILE, get_connection
+from init_db import DB_FILE, get_connection, ensure_database
 from stock import current_stock
 from sales import record_sale
 from alerts import expiring_soon, low_stock
@@ -197,6 +197,7 @@ def print_menu():
 
 
 def main():
+    ensure_database()   # first run on a new machine: create the empty database
     actions = {key: action for key, _label, action in MENU}
     conn = get_connection(DB_FILE)
     try:
