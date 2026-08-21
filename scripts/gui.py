@@ -25,8 +25,18 @@ from alerts import expiring_soon, low_stock
 from visits import patient_history
 from followups import due_follow_ups
 from reports import sales_summary, financial_summary, reorder_spend
+from inventory import add_medicine, receive_stock
 
 BOLD = ("Segoe UI", 11, "bold")
+
+
+def _looks_like_date(text):
+    """True if `text` is a valid ISO date like 2027-01-31."""
+    try:
+        date.fromisoformat(text)
+        return True
+    except ValueError:
+        return False
 
 
 class ClinicGUI:
@@ -45,6 +55,8 @@ class ClinicGUI:
         notebook.add(self._followups_tab(notebook), text="Follow-ups")
         notebook.add(self._history_tab(notebook),   text="Patient history")
         notebook.add(self._money_tab(notebook),     text="Money")
+        notebook.add(self._add_medicine_tab(notebook),  text="Add medicine")
+        notebook.add(self._receive_stock_tab(notebook), text="Receive stock")
 
     # --- a small helper so every table is built the same way -----------------
 
@@ -114,9 +126,7 @@ class ClinicGUI:
         frame = ttk.Frame(parent, padding=10)
 
         # The medicines we can pick from (id, name, price).
-        self.sell_medicines = self.conn.execute(
-            "SELECT id, name, unit_price FROM medicines WHERE is_active = 1 ORDER BY name"
-        ).fetchall()
+        self.sell_medicines = self._all_medicine_rows()
 
         picker = ttk.Frame(frame)
         picker.pack(fill="x", pady=4)
@@ -255,6 +265,157 @@ class ClinicGUI:
             f"Cost of sold:   {cogs}\n"
             f"Gross profit:   {profit}\n"
             f"Reorder spend:  {spend}"))
+
+    # --- shared: keep medicine pickers up to date ----------------------------
+
+    def _all_medicine_rows(self):
+        """Every active medicine as (id, name, unit_price), alphabetical."""
+        return self.conn.execute(
+            "SELECT id, name, unit_price FROM medicines WHERE is_active = 1 ORDER BY name"
+        ).fetchall()
+
+    def _reload_medicine_pickers(self):
+        """After a medicine is added, refresh the comboboxes that list medicines
+        (on the Record-sale and Receive-stock tabs) so the new one appears."""
+        self.sell_medicines = self._all_medicine_rows()
+        self.medicine_box["values"] = [name for _id, name, _p in self.sell_medicines]
+        if hasattr(self, "receive_medicine_box"):
+            self.receive_medicines = self._all_medicine_rows()
+            self.receive_medicine_box["values"] = [n for _id, n, _p in self.receive_medicines]
+
+    # --- Add medicine tab ----------------------------------------------------
+
+    def _add_medicine_tab(self, parent):
+        frame = ttk.Frame(parent, padding=10)
+        ttk.Label(frame, text="Add a medicine to the catalog", font=BOLD)\
+            .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
+
+        # One text box per field. Only Name is required.
+        self.med_fields = {}
+        rows = [("name", "Name *"), ("form", "Form"), ("unit", "Unit"),
+                ("strength", "Strength"), ("category", "Category"),
+                ("unit_price", "Price"), ("reorder_threshold", "Reorder at")]
+        for i, (key, label) in enumerate(rows, start=1):
+            ttk.Label(frame, text=label + ":").grid(row=i, column=0, sticky="e", padx=4, pady=2)
+            entry = ttk.Entry(frame, width=26)
+            entry.grid(row=i, column=1, sticky="w", padx=4, pady=2)
+            self.med_fields[key] = entry
+
+        self.med_partial = tk.IntVar(value=1)
+        ttk.Checkbutton(frame, text="Allow partial sale", variable=self.med_partial)\
+            .grid(row=len(rows) + 1, column=1, sticky="w", padx=4, pady=2)
+        ttk.Button(frame, text="Add medicine", command=self._submit_medicine)\
+            .grid(row=len(rows) + 2, column=1, sticky="w", padx=4, pady=8)
+        self.med_result = ttk.Label(frame, text="", foreground="green")
+        self.med_result.grid(row=len(rows) + 3, column=0, columnspan=2, sticky="w")
+        return frame
+
+    def _submit_medicine(self):
+        name = self.med_fields["name"].get().strip()
+        if not name:
+            self.med_result.config(text="Name is required.", foreground="red")
+            return
+        price_text = self.med_fields["unit_price"].get().strip() or "0"
+        threshold_text = self.med_fields["reorder_threshold"].get().strip() or "0"
+        try:
+            price = float(price_text)
+        except ValueError:
+            self.med_result.config(text="Price must be a number.", foreground="red")
+            return
+        if not threshold_text.isdigit():
+            self.med_result.config(text="Reorder at must be a whole number.", foreground="red")
+            return
+
+        add_medicine(
+            self.conn, name,
+            form=self.med_fields["form"].get().strip() or None,
+            unit=self.med_fields["unit"].get().strip() or None,
+            strength=self.med_fields["strength"].get().strip() or None,
+            category=self.med_fields["category"].get().strip() or None,
+            unit_price=price, reorder_threshold=int(threshold_text),
+            allow_partial_sale=self.med_partial.get())
+
+        for entry in self.med_fields.values():
+            entry.delete(0, "end")
+        self._reload_medicine_pickers()   # so the new medicine can be stocked/sold
+        self._refresh_stock()
+        self.med_result.config(text=f"Added {name}.", foreground="green")
+
+    # --- Receive stock tab ---------------------------------------------------
+
+    def _receive_stock_tab(self, parent):
+        frame = ttk.Frame(parent, padding=10)
+        ttk.Label(frame, text="Receive stock (add a batch)", font=BOLD)\
+            .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
+
+        ttk.Label(frame, text="Medicine:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        self.receive_medicines = self._all_medicine_rows()
+        self.receive_medicine_box = ttk.Combobox(
+            frame, state="readonly", width=24,
+            values=[name for _id, name, _p in self.receive_medicines])
+        self.receive_medicine_box.grid(row=1, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Quantity:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        self.receive_qty = ttk.Entry(frame, width=14)
+        self.receive_qty.grid(row=2, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Buy price / unit:").grid(row=3, column=0, sticky="e", padx=4, pady=2)
+        self.receive_price = ttk.Entry(frame, width=14)
+        self.receive_price.grid(row=3, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Expiry (YYYY-MM-DD):").grid(row=4, column=0, sticky="e", padx=4, pady=2)
+        self.receive_expiry = ttk.Entry(frame, width=14)
+        self.receive_expiry.grid(row=4, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Supplier:").grid(row=5, column=0, sticky="e", padx=4, pady=2)
+        self.suppliers = self.conn.execute(
+            "SELECT id, name FROM suppliers ORDER BY name").fetchall()
+        self.supplier_box = ttk.Combobox(
+            frame, state="readonly", width=24,
+            values=["(none)"] + [name for _id, name in self.suppliers])
+        self.supplier_box.current(0)
+        self.supplier_box.grid(row=5, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Button(frame, text="Receive", command=self._submit_receive)\
+            .grid(row=6, column=1, sticky="w", padx=4, pady=8)
+        self.receive_result = ttk.Label(frame, text="", foreground="green")
+        self.receive_result.grid(row=7, column=0, columnspan=2, sticky="w")
+        return frame
+
+    def _submit_receive(self):
+        index = self.receive_medicine_box.current()
+        if index < 0:
+            self.receive_result.config(text="Pick a medicine.", foreground="red")
+            return
+        quantity_text = self.receive_qty.get().strip()
+        if not (quantity_text.isdigit() and int(quantity_text) > 0):
+            self.receive_result.config(text="Quantity must be a whole number > 0.", foreground="red")
+            return
+        price_text = self.receive_price.get().strip()
+        price = None
+        if price_text:
+            try:
+                price = float(price_text)
+            except ValueError:
+                self.receive_result.config(text="Buy price must be a number.", foreground="red")
+                return
+        expiry = self.receive_expiry.get().strip() or None
+        if expiry and not _looks_like_date(expiry):
+            self.receive_result.config(text="Expiry must look like YYYY-MM-DD.", foreground="red")
+            return
+        supplier_index = self.supplier_box.current()   # 0 = "(none)"
+        supplier_id = None if supplier_index <= 0 else self.suppliers[supplier_index - 1][0]
+
+        medicine_id, name, _price = self.receive_medicines[index]
+        receive_stock(self.conn, medicine_id, int(quantity_text),
+                      purchase_price=price, expiry_date=expiry, supplier_id=supplier_id)
+
+        self.receive_qty.delete(0, "end")
+        self.receive_price.delete(0, "end")
+        self.receive_expiry.delete(0, "end")
+        self._refresh_stock()
+        self._refresh_alerts()
+        self.receive_result.config(text=f"Received {quantity_text} x {name}.", foreground="green")
 
     # --- run -----------------------------------------------------------------
 
