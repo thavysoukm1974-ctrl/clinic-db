@@ -9,3 +9,8 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# PyInstaller build output (rebuilt from the code; no need to track it)
+build/
+dist/
+*.spec
