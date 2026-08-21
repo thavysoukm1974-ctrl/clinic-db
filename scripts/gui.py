@@ -63,18 +63,25 @@ class ClinicGUI:
         self._employees = self._employee_rows()
         self._suppliers = self._supplier_rows()
 
-        # Two halves: VIEWING on the left, ADDING/RECORDING on the right.
+        # Layout: VIEW buttons on the far left, ADD/RECORD buttons on the far
+        # right, and ONE shared content area in the middle. Clicking any button
+        # shows just that one panel in the middle -- one open at a time.
         container = ttk.Frame(self.root, padding=8)
         container.pack(fill="both", expand=True)
+        container.columnconfigure(2, weight=1)   # the middle content stretches
+        container.rowconfigure(0, weight=1)
 
-        left = self._build_side(container, "View", [
+        self._content = ttk.Frame(container)     # the single panel area
+        self._content.grid(row=0, column=2, sticky="nsew")
+
+        view_items = [
             ("Stock",           self._stock_tab),
             ("Alerts",          self._alerts_tab),
             ("Follow-ups",      self._followups_tab),
             ("Patient history", self._history_tab),
             ("Money",           self._money_tab),
-        ])
-        right = self._build_side(container, "Add / record", [
+        ]
+        add_items = [
             ("Record sale",   self._sell_tab),
             ("Record visit",  self._record_visit_tab),
             ("Add medicine",  self._add_medicine_tab),
@@ -83,43 +90,39 @@ class ClinicGUI:
             ("Add employee",  self._add_employee_tab),
             ("Add supplier",  self._add_supplier_tab),
             ("Add follow-up", self._add_followup_tab),
-        ])
-        left.pack(side="left", fill="both", expand=True)
-        ttk.Separator(container, orient="vertical").pack(side="left", fill="y", padx=8)
-        right.pack(side="left", fill="both", expand=True)
+        ]
+        # Build every panel once, all parented to the single content area.
+        self._panels = {label: build(self._content)
+                        for label, build in view_items + add_items}
 
-    # --- one half of the window (a nav column + a swapping content area) ------
+        self._nav_column(container, "View", [label for label, _ in view_items])\
+            .grid(row=0, column=0, sticky="ns")
+        ttk.Separator(container, orient="vertical")\
+            .grid(row=0, column=1, sticky="ns", padx=8)
+        ttk.Separator(container, orient="vertical")\
+            .grid(row=0, column=3, sticky="ns", padx=8)
+        self._nav_column(container, "Add / record", [label for label, _ in add_items])\
+            .grid(row=0, column=4, sticky="ns")
 
-    def _build_side(self, parent, title, items):
-        """Build one half of the window: a title, a vertical column of buttons,
-        and a content area that shows ONE panel at a time. `items` is a list of
-        (label, build_method). Clicking a button shows that panel -- like tabs,
-        but the labels are always fully visible. Returns the side frame.
-        """
-        side = ttk.Frame(parent)
-        ttk.Label(side, text=title, font=BOLD).pack(anchor="w", pady=(0, 4))
+        self._show("Stock")   # show one panel to begin with
 
-        body = ttk.Frame(side)
-        body.pack(fill="both", expand=True)
-        nav = ttk.Frame(body)          # the button column
-        nav.pack(side="left", fill="y", padx=(0, 8))
-        content = ttk.Frame(body)      # where the chosen panel appears
-        content.pack(side="left", fill="both", expand=True)
+    # --- navigation: a button column, and showing one panel at a time --------
 
-        # Build every panel once, parented to the content area (not yet shown).
-        panels = {label: build(content) for label, build in items}
+    def _nav_column(self, parent, title, labels):
+        """A titled vertical column of buttons. Each button shows its panel in
+        the shared content area. Returns the column frame."""
+        column = ttk.Frame(parent)
+        ttk.Label(column, text=title, font=BOLD).pack(anchor="w", pady=(0, 6))
+        for label in labels:
+            ttk.Button(column, text=label, width=16,
+                       command=lambda n=label: self._show(n)).pack(fill="x", pady=1)
+        return column
 
-        def show(name):
-            for panel in panels.values():
-                panel.pack_forget()
-            panels[name].pack(fill="both", expand=True)
-
-        for label, _build in items:
-            ttk.Button(nav, text=label, width=16,
-                       command=lambda n=label: show(n)).pack(fill="x", pady=1)
-
-        show(items[0][0])   # show the first panel by default
-        return side
+    def _show(self, name):
+        """Hide every panel, then show the chosen one in the content area."""
+        for panel in self._panels.values():
+            panel.pack_forget()
+        self._panels[name].pack(fill="both", expand=True)
 
     # --- the whole look, in one place ----------------------------------------
 
