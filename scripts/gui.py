@@ -53,8 +53,8 @@ class ClinicGUI:
         self.conn = conn
         self.root = tk.Tk()
         self.root.title("Clinic system")
-        self.root.geometry("720x520")
-        self.root.minsize(700, 480)
+        self.root.geometry("1000x560")
+        self.root.minsize(900, 520)
         self._apply_style()
 
         # Shared dropdown data, loaded once here and refreshed after any add.
@@ -63,23 +63,63 @@ class ClinicGUI:
         self._employees = self._employee_rows()
         self._suppliers = self._supplier_rows()
 
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True, padx=6, pady=6)
-        # daily-use tabs
-        notebook.add(self._stock_tab(notebook),     text="Stock")
-        notebook.add(self._alerts_tab(notebook),    text="Alerts")
-        notebook.add(self._sell_tab(notebook),      text="Record sale")
-        notebook.add(self._followups_tab(notebook), text="Follow-ups")
-        notebook.add(self._history_tab(notebook),   text="Patient history")
-        notebook.add(self._money_tab(notebook),     text="Money")
-        # data-entry tabs
-        notebook.add(self._add_medicine_tab(notebook),  text="Add medicine")
-        notebook.add(self._receive_stock_tab(notebook), text="Receive stock")
-        notebook.add(self._add_patient_tab(notebook),   text="Add patient")
-        notebook.add(self._add_employee_tab(notebook),  text="Add employee")
-        notebook.add(self._add_supplier_tab(notebook),  text="Add supplier")
-        notebook.add(self._record_visit_tab(notebook),  text="Record visit")
-        notebook.add(self._add_followup_tab(notebook),  text="Add follow-up")
+        # Two halves: VIEWING on the left, ADDING/RECORDING on the right.
+        container = ttk.Frame(self.root, padding=8)
+        container.pack(fill="both", expand=True)
+
+        left = self._build_side(container, "View", [
+            ("Stock",           self._stock_tab),
+            ("Alerts",          self._alerts_tab),
+            ("Follow-ups",      self._followups_tab),
+            ("Patient history", self._history_tab),
+            ("Money",           self._money_tab),
+        ])
+        right = self._build_side(container, "Add / record", [
+            ("Record sale",   self._sell_tab),
+            ("Record visit",  self._record_visit_tab),
+            ("Add medicine",  self._add_medicine_tab),
+            ("Receive stock", self._receive_stock_tab),
+            ("Add patient",   self._add_patient_tab),
+            ("Add employee",  self._add_employee_tab),
+            ("Add supplier",  self._add_supplier_tab),
+            ("Add follow-up", self._add_followup_tab),
+        ])
+        left.pack(side="left", fill="both", expand=True)
+        ttk.Separator(container, orient="vertical").pack(side="left", fill="y", padx=8)
+        right.pack(side="left", fill="both", expand=True)
+
+    # --- one half of the window (a nav column + a swapping content area) ------
+
+    def _build_side(self, parent, title, items):
+        """Build one half of the window: a title, a vertical column of buttons,
+        and a content area that shows ONE panel at a time. `items` is a list of
+        (label, build_method). Clicking a button shows that panel -- like tabs,
+        but the labels are always fully visible. Returns the side frame.
+        """
+        side = ttk.Frame(parent)
+        ttk.Label(side, text=title, font=BOLD).pack(anchor="w", pady=(0, 4))
+
+        body = ttk.Frame(side)
+        body.pack(fill="both", expand=True)
+        nav = ttk.Frame(body)          # the button column
+        nav.pack(side="left", fill="y", padx=(0, 8))
+        content = ttk.Frame(body)      # where the chosen panel appears
+        content.pack(side="left", fill="both", expand=True)
+
+        # Build every panel once, parented to the content area (not yet shown).
+        panels = {label: build(content) for label, build in items}
+
+        def show(name):
+            for panel in panels.values():
+                panel.pack_forget()
+            panels[name].pack(fill="both", expand=True)
+
+        for label, _build in items:
+            ttk.Button(nav, text=label, width=16,
+                       command=lambda n=label: show(n)).pack(fill="x", pady=1)
+
+        show(items[0][0])   # show the first panel by default
+        return side
 
     # --- the whole look, in one place ----------------------------------------
 
