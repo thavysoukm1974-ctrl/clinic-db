@@ -80,7 +80,9 @@ Two sides that meet at **medicines** (the bridge):
 3. ✅ Views/alerts: what's expiring soon, what's low on stock (usable stock only).
 4. ✅ Reports: sales by month, totals for a period, best sellers (`reports.py`); a patient's visit history (`visits.py`).
 5. 🔨 A simple user interface — text menu (`app.py`) and a tabbed Tkinter window
-   (`gui.py`) covering every feature both work. Left to do: polish the look.
+   (`gui.py`). Every feature, including all data entry (add medicine, receive
+   stock, add patient/employee/supplier, record visit, add follow-up), is in the
+   window. Left to do: polish the look (and reorganise the many tabs).
 
 Each step is built and explained one small piece at a time, so I understand it
 before moving on.
