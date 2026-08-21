@@ -19,13 +19,37 @@ from sales import record_sale, _medicine_id
 
 def add_patient(conn, name, date_of_birth=None, sex=None, address=None, phone=None):
     """Add a patient and return the new patient_id."""
+    if not name or not name.strip():
+        raise ValueError("a patient needs a name")
     patient_id = conn.execute(
         """INSERT INTO patients (name, date_of_birth, sex, address, phone)
            VALUES (?, ?, ?, ?, ?)""",
-        (name, date_of_birth, sex, address, phone),
+        (name.strip(), date_of_birth, sex, address, phone),
     ).lastrowid
     conn.commit()
     return patient_id
+
+
+# The staff roles the clinic normally uses. Offered as SUGGESTIONS only -- role
+# is stored as free text, so another clinic could enter a role not in this list.
+COMMON_ROLES = ("doctor", "nurse", "pharmacy", "lab")
+
+
+def add_employee(conn, name, role=None, date_of_birth=None, address=None, phone=None):
+    """Add a staff member and return the new employee_id.
+
+    Only `name` is required. `role` is free text (see COMMON_ROLES for the usual
+    ones); date_of_birth is stored instead of age so it never goes stale.
+    """
+    if not name or not name.strip():
+        raise ValueError("an employee needs a name")
+    employee_id = conn.execute(
+        """INSERT INTO employees (name, role, date_of_birth, address, phone)
+           VALUES (?, ?, ?, ?, ?)""",
+        (name.strip(), role, date_of_birth, address, phone),
+    ).lastrowid
+    conn.commit()
+    return employee_id
 
 
 def record_visit(conn, patient_id, employee_id=None, visit_date=None,
