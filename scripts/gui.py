@@ -282,27 +282,52 @@ class ClinicGUI:
 
     def _sell_tab(self, parent):
         frame = ttk.Frame(parent, padding=10)
-        picker = ttk.Frame(frame)
-        picker.pack(fill="x", pady=4)
-        ttk.Label(picker, text="Medicine:").pack(side="left")
-        self.sell_medicine_box = ttk.Combobox(
-            picker, state="readonly", width=24,
-            values=[name for _id, name, _p in self._medicines])
-        self.sell_medicine_box.pack(side="left", padx=4)
-        ttk.Label(picker, text="Qty:").pack(side="left")
-        self.qty_entry = ttk.Entry(picker, width=6)
-        self.qty_entry.pack(side="left", padx=4)
-        ttk.Button(picker, text="Add", command=self._add_to_basket).pack(side="left", padx=4)
+        frame.columnconfigure(2, weight=1)
+        frame.rowconfigure(5, weight=1)
 
+        ttk.Label(frame, text="Record a sale", font=BOLD)\
+            .grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
+        ttk.Label(frame, text="Add each medicine to the sale, then click Complete sale.")\
+            .grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
+
+        ttk.Label(frame, text="Medicine:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        self.sell_medicine_box = ttk.Combobox(
+            frame, state="readonly", width=22,
+            values=[name for _id, name, _p in self._medicines])
+        self.sell_medicine_box.grid(row=2, column=1, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Quantity:").grid(row=3, column=0, sticky="e", padx=4, pady=2)
+        self.qty_entry = ttk.Entry(frame, width=10)
+        self.qty_entry.grid(row=3, column=1, sticky="w", padx=4, pady=2)
+        ttk.Button(frame, text="Add to sale", command=self._add_to_basket)\
+            .grid(row=3, column=2, sticky="w", padx=4, pady=2)
+
+        ttk.Label(frame, text="Items in this sale:")\
+            .grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 2))
         self.basket = []
         self.basket_table = self._table(
-            frame, ("name", "qty"), ("Medicine", "Qty"), (260, 80), height=7)
-        self.basket_table.pack(fill="both", expand=True, pady=6)
+            frame, ("name", "qty"), ("Medicine", "Qty"), (260, 80), height=6)
+        self.basket_table.grid(row=5, column=0, columnspan=3, sticky="nsew", pady=2)
 
-        ttk.Button(frame, text="Complete sale", command=self._complete_sale).pack()
+        ttk.Button(frame, text="Remove selected item", command=self._remove_from_basket)\
+            .grid(row=6, column=0, columnspan=3, sticky="w", pady=(2, 6))
+        ttk.Button(frame, text="Complete sale", command=self._complete_sale)\
+            .grid(row=7, column=0, columnspan=3, pady=4)
         self.sell_result = ttk.Label(frame, text="", foreground="green")
-        self.sell_result.pack(pady=4)
+        self.sell_result.grid(row=8, column=0, columnspan=3, sticky="w")
         return frame
+
+    def _remove_from_basket(self):
+        """Remove the highlighted row from the basket (in case of a mistake)."""
+        selected = self.basket_table.selection()
+        if not selected:
+            self.sell_result.config(text="Pick a row to remove first.", foreground="red")
+            return
+        # The table rows and self.basket are in the same order, so remove by index.
+        index = self.basket_table.index(selected[0])
+        del self.basket[index]
+        self.basket_table.delete(selected[0])
+        self.sell_result.config(text="Item removed.", foreground="green")
 
     def _add_to_basket(self):
         index = self.sell_medicine_box.current()
