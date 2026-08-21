@@ -194,15 +194,12 @@ def reorder_spend_by_medicine(conn, start_date, end_date):
     ).fetchall()
 
 
-def monthly_report_text(conn, month):
-    """Build a full, human-readable monthly report as one text string.
-
-    `month` is "YYYY-MM". Everything is computed from the raw records for that
-    month, so the report is always up to date. Designed to be shown on screen
-    and saved to a file for the owner to read later.
+def period_report_text(conn, start, end, title_lines):
+    """Build a full, human-readable report for any date range [start, end] as one
+    text string. `title_lines` are the heading lines (report name and period).
+    Everything is computed from the raw records, so it is always up to date. Used
+    by monthly_report_text and daily_report_text below.
     """
-    start, end = f"{month}-01", f"{month}-31"   # ISO text compare covers the month
-
     num_sales, revenue = sales_summary(conn, start, end)
     _revenue, cogs, profit = financial_summary(conn, start, end)
     channel = revenue_by_channel(conn, start, end)
@@ -210,9 +207,7 @@ def monthly_report_text(conn, month):
     visit_count, visit_rev = channel["visit"]
     walkin_count, walkin_rev = channel["walkin"]
 
-    lines = []
-    lines.append("CLINIC MONTHLY REPORT")
-    lines.append(f"Month: {month}")
+    lines = list(title_lines)
     lines.append("=" * 48)
     lines.append("")
     lines.append("MONEY IN  (sales)")
@@ -242,10 +237,21 @@ def monthly_report_text(conn, month):
     lines.append(f"  Cost of goods sold:   {cogs:.2f}")
     lines.append(f"  Gross profit:         {profit:.2f}")
     lines.append("")
-    lines.append("Note: 'reorder spend' is cash paid to BUY stock this month.")
-    lines.append("'Cost of goods sold' is the cost of the stock actually SOLD")
-    lines.append("this month. They are different numbers, on purpose.")
     return "\n".join(lines)
+
+
+def monthly_report_text(conn, month):
+    """The report for one month. `month` is "YYYY-MM"."""
+    return period_report_text(
+        conn, f"{month}-01", f"{month}-31",   # ISO text compare covers the month
+        ["CLINIC MONTHLY REPORT", f"Month: {month}"])
+
+
+def daily_report_text(conn, day):
+    """The report for one day. `day` is "YYYY-MM-DD"."""
+    return period_report_text(
+        conn, day, day,
+        ["CLINIC DAILY REPORT", f"Day: {day}"])
 
 
 def main():
