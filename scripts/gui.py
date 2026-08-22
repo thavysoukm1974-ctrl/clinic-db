@@ -318,12 +318,10 @@ class ClinicGUI:
     def _reload_medicines(self):
         self._medicines = self._medicine_rows()
         names = [name for _id, name, _p in self._medicines]
-        for attr in ("sell_medicine_box", "receive_medicine_box"):
+        for attr in ("sell_medicine_box", "receive_medicine_box",
+                     "visit_medicine_box", "followup_medicine_box"):
             if hasattr(self, attr):
-                getattr(self, attr)["values"] = names
-        for attr in ("visit_medicine_box", "followup_medicine_box"):
-            if hasattr(self, attr):
-                getattr(self, attr)["values"] = ["(none)"] + names
+                self._set_combo_values(getattr(self, attr), names)
 
     def _reload_patients(self):
         self._patients = self._patient_rows()
@@ -378,6 +376,38 @@ class ClinicGUI:
         tree.delete(*tree.get_children())
         for values, tag in rows:
             tree.insert("", "end", values=values, tags=(tag,) if tag else ())
+
+    def _make_filter_combo(self, parent, width=24):
+        """An editable combobox that FILTERS its list as you type -- so a long
+        medicine list is easy to navigate. Fill it with _set_combo_values(). Read
+        the choice by its text (e.g. _medicine_id_by_name) -- not by index, since
+        filtering changes the positions."""
+        combo = ttk.Combobox(parent, width=width)     # editable (not readonly)
+        combo._all_values = []
+
+        def on_key(event):
+            # let the arrow/enter keys work normally for picking from the list
+            if event.keysym in ("Up", "Down", "Return", "Escape", "Left", "Right", "Tab"):
+                return
+            typed = combo.get().strip().lower()
+            combo["values"] = ([v for v in combo._all_values if typed in v.lower()]
+                               if typed else combo._all_values)
+        combo.bind("<KeyRelease>", on_key)
+        return combo
+
+    @staticmethod
+    def _set_combo_values(combo, names):
+        """Set the full option list of a filter combo (and the live values)."""
+        combo._all_values = list(names)
+        combo["values"] = list(names)
+
+    def _medicine_id_by_name(self, name):
+        """Look up a medicine id by its exact name, or None if no match."""
+        name = name.strip()
+        for medicine_id, medicine_name, _price in self._medicines:
+            if medicine_name == name:
+                return medicine_id
+        return None
 
     def _labeled_entries(self, frame, field_labels, start_row=1):
         """Add a label + text box per (key, label); return {key: Entry} and the
@@ -493,9 +523,8 @@ class ClinicGUI:
             .grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         ttk.Label(frame, text="Medicine:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        self.sell_medicine_box = ttk.Combobox(
-            frame, state="readonly", width=22,
-            values=[name for _id, name, _p in self._medicines])
+        self.sell_medicine_box = self._make_filter_combo(frame, width=22)
+        self._set_combo_values(self.sell_medicine_box, [n for _i, n, _p in self._medicines])
         self.sell_medicine_box.grid(row=2, column=1, sticky="w", padx=4, pady=2)
 
         ttk.Label(frame, text="Quantity:").grid(row=3, column=0, sticky="e", padx=4, pady=2)
@@ -559,19 +588,22 @@ class ClinicGUI:
         self.sell_result.config(text="Item removed.", foreground="green")
 
     def _add_to_basket(self):
-        index = self.sell_medicine_box.current()
-        if index < 0:
-            self.sell_result.config(text="Pick a medicine first.", foreground="red")
+        name = self.sell_medicine_box.get().strip()
+        medicine_id = self._medicine_id_by_name(name)
+        if medicine_id is None:
+            self.sell_result.config(text="Type or pick a medicine from the list.", foreground="red")
             return
         text = self.qty_entry.get().strip()
         if not (text.isdigit() and int(text) > 0):
             self.sell_result.config(text="Quantity must be a whole number > 0.", foreground="red")
             return
-        medicine_id, name, _price = self._medicines[index]
         quantity = int(text)
         self.basket.append((medicine_id, quantity))
         self.basket_table.insert("", "end", values=(name, quantity))
         self.qty_entry.delete(0, "end")
+        # reset the medicine picker (clear text and restore the full list) for the next item
+        self.sell_medicine_box.set("")
+        self.sell_medicine_box["values"] = self.sell_medicine_box._all_values
         self.sell_result.config(text=f"Added {quantity} x {name}.", foreground="green")
 
     def _complete_sale(self):
@@ -939,9 +971,8 @@ class ClinicGUI:
         ttk.Label(frame, text="Receive stock (add a batch)", font=BOLD)\
             .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
         ttk.Label(frame, text="Medicine:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
-        self.receive_medicine_box = ttk.Combobox(
-            frame, state="readonly", width=24,
-            values=[name for _id, name, _p in self._medicines])
+        self.receive_medicine_box = self._make_filter_combo(frame, width=24)
+        self._set_combo_values(self.receive_medicine_box, [n for _i, n, _p in self._medicines])
         self.receive_medicine_box.grid(row=1, column=1, sticky="w", padx=4, pady=2)
         self.receive_fields, next_row = self._labeled_entries(frame, [
             ("quantity", "Quantity"), ("price", "Buy price / unit"),
@@ -959,9 +990,9 @@ class ClinicGUI:
         return frame
 
     def _submit_receive(self):
-        index = self.receive_medicine_box.current()
-        if index < 0:
-            self.receive_result.config(text="Pick a medicine.", foreground="red")
+        medicine_id = self._medicine_id_by_name(self.receive_medicine_box.get())
+        if medicine_id is None:
+            self.receive_result.config(text="Type or pick a medicine from the list.", foreground="red")
             return
         quantity_text = self.receive_fields["quantity"].get().strip()
         if not (quantity_text.isdigit() and int(quantity_text) > 0):
@@ -981,11 +1012,13 @@ class ClinicGUI:
             return
         supplier_index = self.supplier_box.current()   # 0 = "(none)"
         supplier_id = None if supplier_index <= 0 else self._suppliers[supplier_index - 1][0]
-        medicine_id, name, _price = self._medicines[index]
+        name = self.receive_medicine_box.get().strip()
         receive_stock(self.conn, medicine_id, int(quantity_text),
                       purchase_price=price, expiry_date=expiry, supplier_id=supplier_id)
         for entry in self.receive_fields.values():
             entry.delete(0, "end")
+        self.receive_medicine_box.set("")
+        self.receive_medicine_box["values"] = self.receive_medicine_box._all_values
         self._refresh_stock()
         self._refresh_alerts()
         self.receive_result.config(text=f"Received {quantity_text} x {name}.", foreground="green")
@@ -1144,10 +1177,8 @@ class ClinicGUI:
         self.visit_fields["visit_date"].insert(0, date.today().isoformat())
 
         ttk.Label(frame, text="Give medicine:").grid(row=next_row, column=0, sticky="e", padx=4, pady=2)
-        self.visit_medicine_box = ttk.Combobox(
-            frame, state="readonly", width=24,
-            values=["(none)"] + [name for _id, name, _p in self._medicines])
-        self.visit_medicine_box.current(0)
+        self.visit_medicine_box = self._make_filter_combo(frame, width=24)   # blank = none
+        self._set_combo_values(self.visit_medicine_box, [n for _i, n, _p in self._medicines])
         self.visit_medicine_box.grid(row=next_row, column=1, sticky="w", padx=4, pady=2)
         ttk.Label(frame, text="Qty given:").grid(row=next_row + 1, column=0, sticky="e", padx=4, pady=2)
         self.visit_qty = ttk.Entry(frame, width=10)
@@ -1182,15 +1213,18 @@ class ClinicGUI:
             self.visit_result.config(text="Date must look like YYYY-MM-DD.", foreground="red")
             return
 
-        # Optional medicine given during the visit.
+        # Optional medicine given during the visit (blank box = none).
         medicines = None
-        medicine_index = self.visit_medicine_box.current()
-        if medicine_index > 0:   # 0 = "(none)"
+        medicine_name = self.visit_medicine_box.get().strip()
+        if medicine_name:
+            medicine_id = self._medicine_id_by_name(medicine_name)
+            if medicine_id is None:
+                self.visit_result.config(text="Medicine not found -- type or pick from the list.", foreground="red")
+                return
             qty_text = self.visit_qty.get().strip()
             if not (qty_text.isdigit() and int(qty_text) > 0):
                 self.visit_result.config(text="Qty given must be a whole number > 0.", foreground="red")
                 return
-            medicine_id = self._medicines[medicine_index - 1][0]
             quantity = int(qty_text)
             if self.visit_free.get():
                 medicines = [(medicine_id, quantity, 0.0)]   # price 0 = free
@@ -1216,7 +1250,8 @@ class ClinicGUI:
             message += " -- some medicine was short of stock"
         # Clear the medicine part; keep patient/date for convenience.
         self.visit_qty.delete(0, "end")
-        self.visit_medicine_box.current(0)
+        self.visit_medicine_box.set("")
+        self.visit_medicine_box["values"] = self.visit_medicine_box._all_values
         self.visit_free.set(0)
         self.visit_paid.set(1)
         self._refresh_stock()
@@ -1248,10 +1283,8 @@ class ClinicGUI:
         self.followup_patient_box.grid(row=1, column=1, sticky="w", padx=4, pady=2)
 
         ttk.Label(frame, text="Medicine:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        self.followup_medicine_box = ttk.Combobox(
-            frame, state="readonly", width=24,
-            values=["(none)"] + [name for _id, name, _p in self._medicines])
-        self.followup_medicine_box.current(0)
+        self.followup_medicine_box = self._make_filter_combo(frame, width=24)   # blank = none
+        self._set_combo_values(self.followup_medicine_box, [n for _i, n, _p in self._medicines])
         self.followup_medicine_box.grid(row=2, column=1, sticky="w", padx=4, pady=2)
 
         self.followup_fields, next_row = self._labeled_entries(frame, [
@@ -1272,8 +1305,11 @@ class ClinicGUI:
             return
         patient_id = self._patients[patient_index][0]
 
-        medicine_index = self.followup_medicine_box.current()
-        medicine_id = None if medicine_index <= 0 else self._medicines[medicine_index - 1][0]
+        medicine_name = self.followup_medicine_box.get().strip()
+        medicine_id = self._medicine_id_by_name(medicine_name) if medicine_name else None
+        if medicine_name and medicine_id is None:
+            self.followup_result.config(text="Medicine not found -- type or pick from the list.", foreground="red")
+            return
 
         qty_text = self.followup_fields["quantity_given"].get().strip()
         if not (qty_text.isdigit() and int(qty_text) > 0):
