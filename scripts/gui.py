@@ -577,9 +577,18 @@ class ClinicGUI:
         text_frame = ttk.Frame(frame)
         text_frame.grid(row=1, column=0, sticky="nsew")
         self.report_text = tk.Text(text_frame, wrap="none", font=("Consolas", 10),
-                                   background="white", height=20, width=52)
+                                   background="white", height=20, width=54)
         scroll = ttk.Scrollbar(text_frame, command=self.report_text.yview)
         self.report_text.configure(yscrollcommand=scroll.set)
+        # Styles for the report: a centred bold title, coloured section headings,
+        # and bold key numbers so the important figures stand out.
+        self.report_text.tag_configure("title", justify="center", spacing3=6,
+                                       font=("Segoe UI", 14, "bold"), foreground=ACCENT)
+        self.report_text.tag_configure("subtitle", justify="center", spacing3=8,
+                                       font=("Segoe UI", 10), foreground="#666")
+        self.report_text.tag_configure("section", spacing1=6, spacing3=2,
+                                       font=("Consolas", 11, "bold"), foreground=ACCENT)
+        self.report_text.tag_configure("key", font=("Consolas", 10, "bold"))
         self.report_text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
@@ -615,8 +624,28 @@ class ClinicGUI:
         self.report_text.configure(state="normal")
         self.report_text.delete("1.0", "end")
         self.report_text.insert("1.0", self._last_report)
+        self._style_report()
         self.report_text.configure(state="disabled")   # read-only
         self.report_status.config(text="", foreground="green")
+
+    # Key figures to make bold in the report, so they stand out from the rest.
+    _REPORT_KEY_LINES = ("Revenue received:", "Still owed", "Total if all paid:",
+                         "Total owed:", "Gross profit:")
+
+    def _style_report(self):
+        """Apply the tags (title, section headings, key numbers) to the report
+        text now showing. The saved .txt file stays plain; only the on-screen
+        view is styled."""
+        for i, line in enumerate(self._last_report.split("\n")):
+            span = (f"{i + 1}.0", f"{i + 1}.end")
+            if i == 0:
+                self.report_text.tag_add("title", *span)           # report name
+            elif i == 1:
+                self.report_text.tag_add("subtitle", *span)        # the period
+            elif line and not line.startswith(" "):
+                self.report_text.tag_add("section", *span)         # MONEY IN, etc.
+            elif any(key in line for key in self._REPORT_KEY_LINES):
+                self.report_text.tag_add("key", *span)             # important numbers
 
     def _save_report(self):
         """Let the owner save the current report as a text file to keep/read later."""
