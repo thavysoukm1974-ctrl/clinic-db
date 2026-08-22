@@ -31,8 +31,8 @@ from pathlib import Path
 # against the latest release tag on GitHub.
 CURRENT_VERSION = "1.0.0"
 
-# Your GitHub repository, as owner/name. Fill these in after creating the repo.
-GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
+# Your GitHub repository, as owner/name.
+GITHUB_OWNER = "thavysoukm1974-ctrl"
 GITHUB_REPO = "clinic-db"
 
 _API_LATEST = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
