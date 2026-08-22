@@ -100,13 +100,26 @@ class ClinicGUI:
         self._panels = {label: build(self._content)
                         for label, build in view_items + add_items}
 
-        self._nav_column(container, "View", [label for label, _ in view_items])\
+        # Group the buttons by what the user is doing, so related panels sit
+        # together (same left/right layout -- just organised into groups).
+        view_groups = [
+            ("Stock",    ["Stock", "Alerts"]),
+            ("Patients", ["Patient history", "Follow-ups"]),
+            ("Reports",  ["Money"]),
+        ]
+        add_groups = [
+            ("Selling",           ["Record sale"]),
+            ("Patients & visits", ["Record visit", "Add patient", "Add follow-up"]),
+            ("Stock & catalog",   ["Add medicine", "Receive stock", "Add supplier"]),
+            ("Staff",             ["Add employee"]),
+        ]
+        self._nav_column(container, "View", view_groups)\
             .grid(row=0, column=0, sticky="ns")
         ttk.Separator(container, orient="vertical")\
             .grid(row=0, column=1, sticky="ns", padx=8)
         ttk.Separator(container, orient="vertical")\
             .grid(row=0, column=3, sticky="ns", padx=8)
-        self._nav_column(container, "Add / record", [label for label, _ in add_items])\
+        self._nav_column(container, "Add / record", add_groups)\
             .grid(row=0, column=4, sticky="ns")
 
         self._show("Stock")   # show one panel to begin with
@@ -131,14 +144,19 @@ class ClinicGUI:
 
     # --- navigation: a button column, and showing one panel at a time --------
 
-    def _nav_column(self, parent, title, labels):
-        """A titled vertical column of buttons. Each button shows its panel in
-        the shared content area. Returns the column frame."""
+    def _nav_column(self, parent, title, groups):
+        """A titled column of buttons, arranged in GROUPS so related panels sit
+        together. `groups` is a list of (group_heading, [button_labels]). Each
+        button shows its panel in the shared content area. Returns the column."""
         column = ttk.Frame(parent)
-        ttk.Label(column, text=title, font=BOLD).pack(anchor="w", pady=(0, 6))
-        for label in labels:
-            ttk.Button(column, text=label, width=16,
-                       command=lambda n=label: self._show(n)).pack(fill="x", pady=1)
+        ttk.Label(column, text=title, font=BOLD).pack(anchor="w", pady=(0, 4))
+        for heading, labels in groups:
+            # A small, muted sub-heading separates one group of buttons from the next.
+            ttk.Label(column, text=heading, font=("Segoe UI", 9), foreground="#888")\
+                .pack(anchor="w", pady=(8, 2))
+            for label in labels:
+                ttk.Button(column, text=label, width=16,
+                           command=lambda n=label: self._show(n)).pack(fill="x", pady=1)
         return column
 
     def _show(self, name):
