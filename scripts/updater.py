@@ -29,7 +29,7 @@ from pathlib import Path
 
 # Bump this on every release. It is baked into the built .exe and compared
 # against the latest release tag on GitHub.
-CURRENT_VERSION = "1.0.3"
+CURRENT_VERSION = "1.0.5"
 
 # Your GitHub repository, as owner/name.
 GITHUB_OWNER = "thavysoukm1974-ctrl"
@@ -135,8 +135,12 @@ def apply_update_and_restart(new_exe):
         f'del "{backup}" >nul 2>&1',
         f'move /y "{current}" "{backup}" >nul',           # keep the old one as fallback
         f'move /y "{new_exe}" "{current}" >nul',          # install the new one
-        f'start "" "{current}"',                          # launch the new version
-        'del "%~f0" >nul 2>&1',                            # delete this helper script
+        # Launch the new version by CALLING it directly (no "start"), so this
+        # cmd stays alive as its parent for the whole session. PyInstaller's
+        # one-file exe validates its parent process, and that check fails if the
+        # launcher exits immediately (as "start" or "explorer" would).
+        f'"{current}"',
+        'del "%~f0" >nul 2>&1',                            # delete this helper (after the app closes)
     ]
     helper.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
     # CREATE_NO_WINDOW (0x08000000) so no console window flashes.
