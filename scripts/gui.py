@@ -41,8 +41,8 @@ from backup import make_backup
 # them into ttk.Style -- a central "stylesheet" that every widget of a type uses.
 # Tahoma renders Thai crisply at small sizes (Latin too); Lao characters fall
 # back to the system Lao font. This keeps names/notes in Lao or Thai readable.
-FONT = ("Tahoma", 10)
-BOLD = ("Tahoma", 11, "bold")
+FONT = ("Tahoma", 11)
+BOLD = ("Tahoma", 13, "bold")
 BG = "#f4f6f8"        # window background (soft grey)
 ACCENT = "#2c6e8f"    # headings / selected tab / table header (teal-blue)
 STRIPE = "#eaf0f4"    # shading for every other table row
@@ -68,8 +68,8 @@ class ClinicGUI:
         self.conn = conn
         self.root = tk.Tk()
         self.root.title("Clinic system")
-        self.root.geometry("1000x560")
-        self.root.minsize(900, 520)
+        self.root.geometry("1180x680")
+        self.root.minsize(1050, 620)
         self._apply_style()
 
         # Shared dropdown data, loaded once here and refreshed after any add.
@@ -189,12 +189,12 @@ class ClinicGUI:
         column = ttk.Frame(parent)
         ttk.Label(column, text=title, font=BOLD).pack(anchor="w", pady=(0, 4))
         for heading, labels in groups:
-            # A small, muted sub-heading separates one group of buttons from the next.
-            ttk.Label(column, text=heading, font=("Segoe UI", 9), foreground="#888")\
-                .pack(anchor="w", pady=(8, 2))
+            # A muted sub-heading separates one group of buttons from the next.
+            ttk.Label(column, text=heading, font=("Tahoma", 10), foreground="#888")\
+                .pack(anchor="w", pady=(10, 2))
             for label in labels:
-                ttk.Button(column, text=label, width=16,
-                           command=lambda n=label: self._show(n)).pack(fill="x", pady=1)
+                ttk.Button(column, text=label, width=20,
+                           command=lambda n=label: self._show(n)).pack(fill="x", pady=2, ipady=2)
         return column
 
     def _show(self, name):
@@ -324,24 +324,21 @@ class ClinicGUI:
         style.configure(".", font=FONT, background=BG, foreground=TEXT)
         style.configure("TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=TEXT)
-        style.configure("TButton", padding=6)
+        style.configure("TButton", padding=8, font=FONT)
         style.map("TButton",
                   background=[("active", ACCENT)],
                   foreground=[("active", "white")])
+        style.configure("TCheckbutton", background=BG, font=FONT)
+        style.configure("TRadiobutton", background=BG, font=FONT)
+        style.configure("TCombobox", padding=3)
+        style.configure("TEntry", padding=3)
 
-        # Tabs across the top.
-        style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TNotebook.Tab", padding=(12, 6))
-        style.map("TNotebook.Tab",
-                  background=[("selected", ACCENT)],
-                  foreground=[("selected", "white")])
-
-        # Tables.
-        style.configure("Treeview", rowheight=24,
+        # Tables -- taller rows and a bigger header for the larger font.
+        style.configure("Treeview", rowheight=30, font=FONT,
                         background="white", fieldbackground="white")
         style.configure("Treeview.Heading",
-                        font=("Segoe UI", 10, "bold"),
-                        background=ACCENT, foreground="white", padding=4)
+                        font=BOLD,
+                        background=ACCENT, foreground="white", padding=6)
         style.map("Treeview",
                   background=[("selected", ACCENT)],
                   foreground=[("selected", "white")])
