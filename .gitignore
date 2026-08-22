@@ -3,6 +3,7 @@
 # (which IS code) is tracked, so anyone can rebuild an empty database.
 db/
 backups/
+settings.json
 
 # Python noise
 __pycache__/

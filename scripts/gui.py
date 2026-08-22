@@ -23,6 +23,8 @@ from datetime import date
 from pathlib import Path
 
 import updater
+import i18n
+from i18n import t
 from init_db import DB_FILE, get_connection, ensure_database
 from stock import current_stock
 from sales import record_sale, outstanding_debts, mark_sale_paid
@@ -37,8 +39,10 @@ from backup import make_backup
 # --- one place for the whole look (fonts + colours) ----------------------------
 # Change these and the entire window changes, because _apply_style() below feeds
 # them into ttk.Style -- a central "stylesheet" that every widget of a type uses.
-FONT = ("Segoe UI", 10)
-BOLD = ("Segoe UI", 11, "bold")
+# Leelawadee UI covers Latin + Thai; Lao characters fall back to the system Lao
+# font automatically. This lets names/notes be typed in Lao or Thai and show up.
+FONT = ("Leelawadee UI", 10)
+BOLD = ("Leelawadee UI", 11, "bold")
 BG = "#f4f6f8"        # window background (soft grey)
 ACCENT = "#2c6e8f"    # headings / selected tab / table header (teal-blue)
 STRIPE = "#eaf0f4"    # shading for every other table row
@@ -84,6 +88,14 @@ class ClinicGUI:
                    command=self._backup_now).pack(side="left", padx=12)
         ttk.Button(status, text="Check for updates",
                    command=self._check_updates_now).pack(side="right")
+        # Language chooser (English / Thai). Changing it applies on reopen.
+        self.language_box = ttk.Combobox(
+            status, state="readonly", width=9,
+            values=list(i18n.LANGUAGES.values()))
+        self.language_box.set(i18n.LANGUAGES[i18n.current_language()])
+        self.language_box.bind("<<ComboboxSelected>>", self._change_language)
+        self.language_box.pack(side="right", padx=6)
+        ttk.Label(status, text="Language:", foreground="#888").pack(side="right")
         self.status_label = ttk.Label(status, text="", foreground="#888")
         self.status_label.pack(side="right", padx=8)
 
@@ -143,6 +155,7 @@ class ClinicGUI:
             .grid(row=0, column=4, sticky="ns")
 
         self._show("Stock")   # show one panel to begin with
+        self._apply_language()   # translate the built widgets to the chosen language
 
         # In the installed app, quietly check for a newer version shortly after
         # the window opens (in the background, so a slow network never blocks it).
@@ -189,6 +202,40 @@ class ClinicGUI:
         for panel in self._panels.values():
             panel.pack_forget()
         self._panels[name].pack(fill="both", expand=True)
+
+    # --- language -------------------------------------------------------------
+
+    def _apply_language(self):
+        """Translate the text of every already-built widget to the current
+        language. Each widget's ORIGINAL English text is remembered the first
+        time, so this also works when switching back to English."""
+        self._translate_tree(self.root)
+
+    def _translate_tree(self, widget):
+        try:
+            if "text" in widget.keys():
+                original = getattr(widget, "_en_text", None)
+                if original is None:
+                    original = widget.cget("text")
+                    widget._en_text = original      # remember the English original
+                if original:
+                    widget.configure(text=t(original))
+        except Exception:
+            pass
+        for child in widget.winfo_children():
+            self._translate_tree(child)
+
+    def _change_language(self, _event=None):
+        """Save the chosen language; it takes effect when the app is reopened."""
+        chosen_label = self.language_box.get()
+        for code, label in i18n.LANGUAGES.items():
+            if label == chosen_label:
+                i18n.set_language(code)
+                break
+        messagebox.showinfo(
+            "Language / ภาษา",
+            "Please close and open the app again to apply the language.\n\n"
+            "กรุณาปิดแล้วเปิดโปรแกรมอีกครั้งเพื่อเปลี่ยนภาษา")
 
     # --- backup ---------------------------------------------------------------
 
@@ -349,7 +396,7 @@ class ClinicGUI:
     def _table(self, parent, columns, headings, widths, height=8):
         tree = ttk.Treeview(parent, columns=columns, show="headings", height=height)
         for column, heading, width in zip(columns, headings, widths):
-            tree.heading(column, text=heading)
+            tree.heading(column, text=t(heading))    # translated column header
             tree.column(column, width=width, anchor="w")
         # Shade every other row (the "odd" ones) for readability.
         tree.tag_configure("odd", background=STRIPE)
@@ -1349,6 +1396,7 @@ def main():
     # First thing on every start: make sure the database and tables exist.
     # On the very first run on a new computer this creates them from scratch.
     ensure_database()
+    i18n.load_language()      # remember the user's English/Thai choice
     conn = get_connection(DB_FILE)
     try:
         ClinicGUI(conn).run()
