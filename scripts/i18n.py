@@ -184,25 +184,30 @@ _THAI = {
     "(no sales)": "(ไม่มีการขาย)",
 }
 
-_lang = "en"
+# Default language for a brand-new install (no settings.json yet). Thai, because
+# the app is for a Thai/Lao-speaking clinic. Once the user picks a language it is
+# saved and remembered.
+_DEFAULT = "th"
+_lang = _DEFAULT
 
 
 def load_language():
-    """Read the saved language ('en' or 'th') at start-up. Defaults to English."""
+    """Read the saved language ('en' or 'th') at start-up. A fresh install with
+    no saved choice yet uses the default (Thai)."""
     global _lang
     try:
-        _lang = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8")).get("language", "en")
+        _lang = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8")).get("language", _DEFAULT)
     except Exception:
-        _lang = "en"
+        _lang = _DEFAULT
     if _lang not in LANGUAGES:
-        _lang = "en"
+        _lang = _DEFAULT
     return _lang
 
 
 def set_language(code):
     """Change and save the language. Takes effect when the app is reopened."""
     global _lang
-    _lang = code if code in LANGUAGES else "en"
+    _lang = code if code in LANGUAGES else _DEFAULT
     try:
         _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
         _SETTINGS_FILE.write_text(json.dumps({"language": _lang}), encoding="utf-8")
