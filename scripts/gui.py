@@ -236,8 +236,8 @@ class ClinicGUI:
             self.status_label.config(text="")
             messagebox.showerror("Update failed", f"Could not install the update:\n{error}")
             return
-        # The new version is now launching; close this one.
-        self.conn.close()
+        # The helper is now waiting for us to close, then it installs and
+        # relaunches. Close the window so the app exits and frees the .exe file.
         self.root.destroy()
 
     # --- the whole look, in one place ----------------------------------------

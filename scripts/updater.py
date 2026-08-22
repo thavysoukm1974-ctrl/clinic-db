@@ -29,7 +29,7 @@ from pathlib import Path
 
 # Bump this on every release. It is baked into the built .exe and compared
 # against the latest release tag on GitHub.
-CURRENT_VERSION = "1.0.1"
+CURRENT_VERSION = "1.0.3"
 
 # Your GitHub repository, as owner/name.
 GITHUB_OWNER = "thavysoukm1974-ctrl"
@@ -112,24 +112,35 @@ def download_update(info, dest_dir):
 
 
 def apply_update_and_restart(new_exe):
-    """Replace the running program with new_exe and launch the new one.
+    """Install new_exe in place of the running program and restart it.
 
-    Windows will not let us overwrite the .exe that is currently running, but it
-    WILL let a running .exe be renamed. So we rename ourselves aside, move the
-    new program into our place, start it, and let the caller close this one. The
-    renamed old copy stays as a fallback and is cleaned up on the next start.
+    Two Windows facts make this indirect: (1) you cannot overwrite the .exe that
+    is currently running, and (2) a PyInstaller one-file exe relaunched directly
+    from inside itself trips its own anti-tampering check. So we hand the job to
+    a tiny .bat helper that runs as a SEPARATE process: it waits for this program
+    to close (which frees the .exe file), swaps in the new one, and starts it.
+    The old program is kept as ClinicSystem-old.exe as a fallback.
     """
-    current = Path(sys.executable)                      # the running exe
+    current = Path(sys.executable)
     backup = current.with_name("ClinicSystem-old.exe")
-    backup.unlink(missing_ok=True)
+    helper = current.with_name("_apply_update.bat")
 
-    os.rename(current, backup)                          # move the running exe aside
-    try:
-        os.replace(new_exe, current)                    # put the new one in its place
-    except Exception:
-        os.rename(backup, current)                      # roll back if that failed
-        raise
-    subprocess.Popen([str(current)])                    # start the new version
+    lines = [
+        "@echo off",
+        "ping 127.0.0.1 -n 2 >nul",                       # brief pause
+        ":wait",
+        # keep waiting while this program is still running (its .exe stays locked)
+        f'tasklist /fi "imagename eq {current.name}" | find /i "{current.name}" >nul '
+        f'&& ( ping 127.0.0.1 -n 2 >nul & goto wait )',
+        f'del "{backup}" >nul 2>&1',
+        f'move /y "{current}" "{backup}" >nul',           # keep the old one as fallback
+        f'move /y "{new_exe}" "{current}" >nul',          # install the new one
+        f'start "" "{current}"',                          # launch the new version
+        'del "%~f0" >nul 2>&1',                            # delete this helper script
+    ]
+    helper.write_text("\r\n".join(lines) + "\r\n", encoding="utf-8")
+    # CREATE_NO_WINDOW (0x08000000) so no console window flashes.
+    subprocess.Popen(["cmd", "/c", str(helper)], creationflags=0x08000000)
 
 
 def cleanup_old():
