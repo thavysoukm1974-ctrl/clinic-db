@@ -39,10 +39,10 @@ from backup import make_backup
 # --- one place for the whole look (fonts + colours) ----------------------------
 # Change these and the entire window changes, because _apply_style() below feeds
 # them into ttk.Style -- a central "stylesheet" that every widget of a type uses.
-# Leelawadee UI covers Latin + Thai; Lao characters fall back to the system Lao
-# font automatically. This lets names/notes be typed in Lao or Thai and show up.
-FONT = ("Leelawadee UI", 10)
-BOLD = ("Leelawadee UI", 11, "bold")
+# Tahoma renders Thai crisply at small sizes (Latin too); Lao characters fall
+# back to the system Lao font. This keeps names/notes in Lao or Thai readable.
+FONT = ("Tahoma", 10)
+BOLD = ("Tahoma", 11, "bold")
 BG = "#f4f6f8"        # window background (soft grey)
 ACCENT = "#2c6e8f"    # headings / selected tab / table header (teal-blue)
 STRIPE = "#eaf0f4"    # shading for every other table row
@@ -797,7 +797,11 @@ class ClinicGUI:
         # columns line up).
         text_frame = ttk.Frame(frame)
         text_frame.grid(row=1, column=0, sticky="nsew")
-        self.report_text = tk.Text(text_frame, wrap="none", font=("Consolas", 10),
+        # Consolas lines the number columns up nicely but has no Thai glyphs, so
+        # use a Thai-capable font when the language is Thai (alignment is then
+        # approximate, but the text is readable).
+        report_font = ("Consolas", 10) if i18n.current_language() == "en" else ("Tahoma", 10)
+        self.report_text = tk.Text(text_frame, wrap="none", font=report_font,
                                    background="white", height=20, width=54)
         scroll = ttk.Scrollbar(text_frame, command=self.report_text.yview)
         self.report_text.configure(yscrollcommand=scroll.set)
@@ -865,7 +869,7 @@ class ClinicGUI:
                 self.report_text.tag_add("subtitle", *span)        # the period
             elif line and not line.startswith(" "):
                 self.report_text.tag_add("section", *span)         # MONEY IN, etc.
-            elif any(key in line for key in self._REPORT_KEY_LINES):
+            elif any(t(key) in line for key in self._REPORT_KEY_LINES):
                 self.report_text.tag_add("key", *span)             # important numbers
 
     def _save_report(self):

@@ -16,6 +16,7 @@ of each sale, so reports show what was actually charged -- including free items
 from datetime import date
 
 from init_db import DB_FILE, get_connection
+from i18n import t
 
 # A date range wide enough to mean "all time", used when no dates are given.
 _ALL_TIME = ("0000-01-01", "9999-12-31")
@@ -270,51 +271,51 @@ def period_report_text(conn, start, end, title_lines):
 
     lines = list(title_lines)
     lines.append("")
-    lines.append("MONEY IN  (sales)")
-    lines.append(f"  Total sales:          {num_sales}")
-    lines.append(f"  Revenue received:     {received:>12.2f}")
-    lines.append(f"  Still owed (unpaid):  {owed:>12.2f}")
-    lines.append(f"  Total if all paid:    {received + owed:>12.2f}")
+    lines.append(t("MONEY IN  (sales)"))
+    lines.append(f"  {t('Total sales:'):<22}{num_sales}")
+    lines.append(f"  {t('Revenue received:'):<22}{received:>12.2f}")
+    lines.append(f"  {t('Still owed (unpaid):'):<22}{owed:>12.2f}")
+    lines.append(f"  {t('Total if all paid:'):<22}{received + owed:>12.2f}")
     lines.append("")
-    lines.append("  By channel:")
-    lines.append(f"    from patient visits:{visit_rev:>12.2f}   ({visit_count} sales)")
-    lines.append(f"    from walk-in buyers:{walkin_rev:>12.2f}   ({walkin_count} sales)")
+    lines.append("  " + t("By channel:"))
+    lines.append(f"    {t('from patient visits:'):<20}{visit_rev:>12.2f}   ({visit_count} {t('sales')})")
+    lines.append(f"    {t('from walk-in buyers:'):<20}{walkin_rev:>12.2f}   ({walkin_count} {t('sales')})")
     lines.append("")
-    lines.append("  Best sellers (by quantity):")
+    lines.append("  " + t("Best sellers (by quantity):"))
     best = best_sellers(conn, start, end)
     if not best:
-        lines.append("    (no sales)")
+        lines.append("    " + t("(no sales)"))
     for name, quantity, item_revenue in best:
-        lines.append(f"    {name:<22}{quantity:>5} sold {item_revenue:>11.2f}")
+        lines.append(f"    {name:<22}{quantity:>5} {t('sold')} {item_revenue:>11.2f}")
     lines.append("")
-    lines.append("SALES BY STAFF  (who sold)")
+    lines.append(t("SALES BY STAFF  (who sold)"))
     staff = sales_by_employee(conn, start, end)
     if not staff:
-        lines.append("    (no sales)")
+        lines.append("    " + t("(no sales)"))
     for seller, count, seller_revenue in staff:
-        lines.append(f"    {seller:<22}{count:>4} sales {seller_revenue:>11.2f}")
+        lines.append(f"    {seller:<22}{count:>4} {t('sales')} {seller_revenue:>11.2f}")
     lines.append("")
-    lines.append("DEBTS  (unpaid sales this period)")
+    lines.append(t("DEBTS  (unpaid sales this period)"))
     debts = debts_in_period(conn, start, end)
     if not debts:
-        lines.append("    (none)")
+        lines.append("    " + t("(none)"))
     for who, amount in debts:
         lines.append(f"    {who:<22}{amount:>14.2f}")
-    lines.append(f"  Total owed:           {owed:>12.2f}")
+    lines.append(f"  {t('Total owed:'):<22}{owed:>12.2f}")
     lines.append("")
-    lines.append("MONEY OUT  (restocking)")
-    lines.append(f"  Total reorder spend:  {spend:>12.2f}")
-    lines.append("  By supplier:")
+    lines.append(t("MONEY OUT  (restocking)"))
+    lines.append(f"  {t('Total reorder spend:'):<22}{spend:>12.2f}")
+    lines.append("  " + t("By supplier:"))
     for supplier, amount in reorder_spend_by_supplier(conn, start, end):
         lines.append(f"    {supplier:<22}{amount:>14.2f}")
-    lines.append("  By medicine:")
+    lines.append("  " + t("By medicine:"))
     for name, amount in reorder_spend_by_medicine(conn, start, end):
         lines.append(f"    {name:<22}{amount:>14.2f}")
     lines.append("")
-    lines.append("PROFIT  (on what was sold)")
-    lines.append(f"  Revenue (all sales):  {revenue:>12.2f}")
-    lines.append(f"  Cost of goods sold:   {cogs:>12.2f}")
-    lines.append(f"  Gross profit:         {profit:>12.2f}")
+    lines.append(t("PROFIT  (on what was sold)"))
+    lines.append(f"  {t('Revenue (all sales):'):<22}{revenue:>12.2f}")
+    lines.append(f"  {t('Cost of goods sold:'):<22}{cogs:>12.2f}")
+    lines.append(f"  {t('Gross profit:'):<22}{profit:>12.2f}")
     lines.append("")
     return "\n".join(lines)
 
@@ -323,14 +324,14 @@ def monthly_report_text(conn, month):
     """The report for one month. `month` is "YYYY-MM"."""
     return period_report_text(
         conn, f"{month}-01", f"{month}-31",   # ISO text compare covers the month
-        ["CLINIC MONTHLY REPORT", f"Month: {month}"])
+        [t("CLINIC MONTHLY REPORT"), f"{t('Month:')} {month}"])
 
 
 def daily_report_text(conn, day):
     """The report for one day. `day` is "YYYY-MM-DD"."""
     return period_report_text(
         conn, day, day,
-        ["CLINIC DAILY REPORT", f"Day: {day}"])
+        [t("CLINIC DAILY REPORT"), f"{t('Day:')} {day}"])
 
 
 def main():
