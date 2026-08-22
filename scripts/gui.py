@@ -778,17 +778,7 @@ class ClinicGUI:
         self.report_period.pack(side="left", padx=4)
         ttk.Button(header, text="Show", command=self._refresh_money).pack(side="left", padx=4)
         ttk.Button(header, text="Save report...", command=self._save_report).pack(side="left", padx=4)
-        self._help_button(header, "About this report", (
-            "MONEY IN counts what was sold, split between sales made during "
-            "patient visits and walk-in counter sales.\n\n"
-            "MONEY OUT (reorder spend) is cash paid to BUY stock received in "
-            "this period.\n\n"
-            "COST OF GOODS SOLD is different: it is what the stock actually "
-            "SOLD in this period had cost. You might buy a big batch one month "
-            "and sell it over many months, so the two numbers differ on "
-            "purpose.\n\n"
-            "GROSS PROFIT = revenue minus cost of goods sold."
-        )).pack(side="left", padx=4)
+        self._help_button(header, *i18n.help_text("report")).pack(side="left", padx=4)
 
         # A scrollable, read-only text area holds the report (monospace so the
         # columns line up).
@@ -955,14 +945,8 @@ class ClinicGUI:
         combo_row("form", "Form", COMMON_FORMS)     # shape: tablet, syrup, ...
         combo_row("unit", "Unit", COMMON_UNITS)     # how you count/sell it
         # "?" explains form vs unit, since the difference can be confusing.
-        self._help_button(frame, "Form vs Unit", (
-            "FORM is the medicine's physical shape: tablet, capsule, syrup, "
-            "cream...\n\n"
-            "UNIT is how you count and sell it: by the tablet, by the bottle, "
-            "by the box...\n\n"
-            "For pills they are usually the same word. For liquids they "
-            "differ: a cough syrup's form is 'syrup' but you sell it by the "
-            "'bottle'.")).grid(row=row - 1, column=2, sticky="w", padx=2)
+        self._help_button(frame, *i18n.help_text("form_unit"))\
+            .grid(row=row - 1, column=2, sticky="w", padx=2)
         entry_row("strength", "Strength")
         entry_row("category", "Category")
         entry_row("unit_price", "Price")
@@ -971,13 +955,8 @@ class ClinicGUI:
         self.med_partial = tk.IntVar(value=1)
         ttk.Checkbutton(frame, text="Allow partial sale", variable=self.med_partial)\
             .grid(row=row, column=1, sticky="w", padx=4, pady=2)
-        self._help_button(frame, "Allow partial sale", (
-            "If a customer asks for more than is in stock:\n\n"
-            "TICKED -- sell them the amount that IS in stock (a partial "
-            "amount), and the seller is told how much was short.\n\n"
-            "UNTICKED -- sell none of this medicine in that case. Use this "
-            "for medicine that should only be sold in full amounts, such as "
-            "a complete course.")).grid(row=row, column=2, sticky="w", padx=2)
+        self._help_button(frame, *i18n.help_text("partial"))\
+            .grid(row=row, column=2, sticky="w", padx=2)
         ttk.Button(frame, text="Add medicine", command=self._submit_medicine)\
             .grid(row=row + 1, column=1, sticky="w", padx=4, pady=8)
         self.med_result = ttk.Label(frame, text="", foreground="green")
@@ -1314,14 +1293,7 @@ class ClinicGUI:
         frame = ttk.Frame(parent, padding=10)
         ttk.Label(frame, text="Add a follow-up (check-in when medicine runs out)", font=BOLD)\
             .grid(row=0, column=0, columnspan=2, pady=6, sticky="w")
-        self._help_button(frame, "How the run-out date is estimated", (
-            "The expected run-out date is calculated from what you enter:\n\n"
-            "    days of supply = quantity given / daily dose\n"
-            "    run-out date = start date + days of supply\n\n"
-            "Example: 10 tablets at 2 per day = 5 days.\n\n"
-            "It is an estimate that assumes the medicine is taken as "
-            "directed. The follow-up list shows patients whose estimated "
-            "run-out date has passed, so they can be called to check in."))\
+        self._help_button(frame, *i18n.help_text("runout"))\
             .grid(row=0, column=2, sticky="w", padx=2)
 
         ttk.Label(frame, text="Patient *:").grid(row=1, column=0, sticky="e", padx=4, pady=2)

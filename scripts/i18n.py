@@ -220,3 +220,92 @@ def t(text):
     if _lang == "th":
         return _THAI.get(text, text)
     return text
+
+
+# The longer "?" help pop-ups, kept here in both languages. help_text(key)
+# returns (title, body) for the current language. (Thai is a draft to review.)
+HELP = {
+    "report": {
+        "en_title": "About this report",
+        "th_title": "เกี่ยวกับรายงานนี้",
+        "en": (
+            "MONEY IN counts what was sold, split between sales made during "
+            "patient visits and walk-in counter sales.\n\n"
+            "MONEY OUT (reorder spend) is cash paid to BUY stock received in "
+            "this period.\n\n"
+            "COST OF GOODS SOLD is different: it is what the stock actually "
+            "SOLD in this period had cost. You might buy a big batch one month "
+            "and sell it over many months, so the two numbers differ on "
+            "purpose.\n\n"
+            "GROSS PROFIT = revenue minus cost of goods sold."),
+        "th": (
+            "เงินเข้า นับสิ่งที่ขายได้ แยกเป็นการขายระหว่างการตรวจผู้ป่วย "
+            "และการขายหน้าร้าน\n\n"
+            "เงินออก (ค่าสั่งซื้อ) คือเงินสดที่จ่ายเพื่อซื้อสต็อกที่รับเข้ามาในช่วงนี้\n\n"
+            "ต้นทุนสินค้าที่ขาย ต่างกัน คือต้นทุนของสต็อกที่ขายไปจริงในช่วงนี้ "
+            "คุณอาจซื้อยาล็อตใหญ่ในเดือนหนึ่งแล้วขายไปหลายเดือน "
+            "ตัวเลขสองอย่างจึงต่างกันโดยตั้งใจ\n\n"
+            "กำไรขั้นต้น = รายได้ ลบ ต้นทุนสินค้าที่ขาย"),
+    },
+    "form_unit": {
+        "en_title": "Form vs Unit",
+        "th_title": "รูปแบบ เทียบกับ หน่วย",
+        "en": (
+            "FORM is the medicine's physical shape: tablet, capsule, syrup, "
+            "cream...\n\n"
+            "UNIT is how you count and sell it: by the tablet, by the bottle, "
+            "by the box...\n\n"
+            "For pills they are usually the same word. For liquids they "
+            "differ: a cough syrup's form is 'syrup' but you sell it by the "
+            "'bottle'."),
+        "th": (
+            "รูปแบบ คือลักษณะทางกายภาพของยา: เม็ด แคปซูล น้ำเชื่อม ครีม...\n\n"
+            "หน่วย คือวิธีที่คุณนับและขาย: เป็นเม็ด เป็นขวด เป็นกล่อง...\n\n"
+            "ยาเม็ดมักเป็นคำเดียวกัน แต่ยาน้ำจะต่างกัน เช่น ยาน้ำเชื่อมแก้ไอ "
+            "มีรูปแบบเป็น 'น้ำเชื่อม' แต่ขายเป็น 'ขวด'"),
+    },
+    "partial": {
+        "en_title": "Allow partial sale",
+        "th_title": "อนุญาตให้ขายบางส่วน",
+        "en": (
+            "If a customer asks for more than is in stock:\n\n"
+            "TICKED -- sell them the amount that IS in stock (a partial "
+            "amount), and the seller is told how much was short.\n\n"
+            "UNTICKED -- sell none of this medicine in that case. Use this "
+            "for medicine that should only be sold in full amounts, such as "
+            "a complete course."),
+        "th": (
+            "ถ้าลูกค้าขอมากกว่าที่มีในสต็อก:\n\n"
+            "ติ๊ก -- ขายเท่าที่มีในสต็อก (บางส่วน) และระบบจะบอกผู้ขายว่าขาดไปเท่าไร\n\n"
+            "ไม่ติ๊ก -- ไม่ขายยานี้เลยในกรณีนั้น ใช้กับยาที่ควรขายเต็มจำนวนเท่านั้น "
+            "เช่น ยาที่ต้องกินให้ครบคอร์ส"),
+    },
+    "runout": {
+        "en_title": "How the run-out date is estimated",
+        "th_title": "วิธีประมาณวันที่ยาหมด",
+        "en": (
+            "The expected run-out date is calculated from what you enter:\n\n"
+            "    days of supply = quantity given / daily dose\n"
+            "    run-out date = start date + days of supply\n\n"
+            "Example: 10 tablets at 2 per day = 5 days.\n\n"
+            "It is an estimate that assumes the medicine is taken as "
+            "directed. The follow-up list shows patients whose estimated "
+            "run-out date has passed, so they can be called to check in."),
+        "th": (
+            "วันที่คาดว่ายาจะหมด คำนวณจากสิ่งที่คุณกรอก:\n\n"
+            "    จำนวนวันที่ใช้ได้ = จำนวนที่ให้ / ขนาดต่อวัน\n"
+            "    วันที่ยาหมด = วันเริ่ม + จำนวนวันที่ใช้ได้\n\n"
+            "ตัวอย่าง: ยา 10 เม็ด กินวันละ 2 เม็ด = 5 วัน\n\n"
+            "เป็นการประมาณโดยสมมติว่ากินยาตามที่แพทย์สั่ง "
+            "รายการติดตามผลจะแสดงผู้ป่วยที่เลยวันคาดว่ายาหมดแล้ว "
+            "เพื่อจะได้โทรไปติดตาม"),
+    },
+}
+
+
+def help_text(key):
+    """Return (title, body) for a help pop-up in the current language."""
+    entry = HELP[key]
+    if _lang == "th":
+        return entry["th_title"], entry["th"]
+    return entry["en_title"], entry["en"]
