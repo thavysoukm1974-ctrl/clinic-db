@@ -15,10 +15,14 @@ Unreal (UMG) parallels: widgets = UMG widgets; .grid()/.pack() = layout;
 command=some_function = an "On Clicked" event; root.mainloop() = the event loop.
 """
 
+import sys
+import threading
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from datetime import date
+from pathlib import Path
 
+import updater
 from init_db import DB_FILE, get_connection, ensure_database
 from stock import current_stock
 from sales import record_sale, outstanding_debts, mark_sale_paid
@@ -67,6 +71,17 @@ class ClinicGUI:
         self._patients = self._patient_rows()
         self._employees = self._employee_rows()
         self._suppliers = self._supplier_rows()
+
+        # A thin status bar along the bottom: the version, and a manual update
+        # check. Packed first with side=bottom so it reserves the bottom strip.
+        status = ttk.Frame(self.root, padding=(8, 2))
+        status.pack(side="bottom", fill="x")
+        ttk.Label(status, text=f"Clinic system  v{updater.CURRENT_VERSION}",
+                  foreground="#888").pack(side="left")
+        ttk.Button(status, text="Check for updates",
+                   command=self._check_updates_now).pack(side="right")
+        self.status_label = ttk.Label(status, text="", foreground="#888")
+        self.status_label.pack(side="right", padx=8)
 
         # Layout: VIEW buttons on the far left, ADD/RECORD buttons on the far
         # right, and ONE shared content area in the middle. Clicking any button
@@ -125,6 +140,11 @@ class ClinicGUI:
 
         self._show("Stock")   # show one panel to begin with
 
+        # In the installed app, quietly check for a newer version shortly after
+        # the window opens (in the background, so a slow network never blocks it).
+        if getattr(sys, "frozen", False):
+            self.root.after(1500, self._auto_check_updates)
+
     # --- "?" help buttons -----------------------------------------------------
 
     def _help_button(self, parent, title, text):
@@ -165,6 +185,60 @@ class ClinicGUI:
         for panel in self._panels.values():
             panel.pack_forget()
         self._panels[name].pack(fill="both", expand=True)
+
+    # --- software updates -----------------------------------------------------
+
+    def _auto_check_updates(self):
+        """Check for an update in a background thread (so the window never
+        freezes), and if one is found, offer it on the main thread."""
+        def worker():
+            info = updater.check_for_update()
+            if info:
+                # after(0, ...) hops back to the UI thread, which is the only
+                # thread allowed to touch Tk widgets.
+                self.root.after(0, lambda: self._offer_update(info))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _check_updates_now(self):
+        """The manual 'Check for updates' button."""
+        self.status_label.config(text="Checking...")
+        self.root.update_idletasks()
+        info = updater.check_for_update()
+        self.status_label.config(text="")
+        if info is None:
+            messagebox.showinfo(
+                "Up to date",
+                f"You have the latest version (v{updater.CURRENT_VERSION}).")
+        else:
+            self._offer_update(info)
+
+    def _offer_update(self, info):
+        """Ask whether to install the found update; if yes, download, verify,
+        swap it in, and restart."""
+        notes = info["notes"] or "(no description)"
+        if not messagebox.askyesno(
+                "Update available",
+                f"Version {info['version']} is available "
+                f"(you have {updater.CURRENT_VERSION}).\n\n{notes}\n\n"
+                "Install it now? The app will close and reopen."):
+            return
+        if not getattr(sys, "frozen", False):
+            messagebox.showinfo(
+                "Update", "Updates install in the packaged app (the .exe), "
+                "not when running from source.")
+            return
+        try:
+            self.status_label.config(text="Downloading update...")
+            self.root.update_idletasks()
+            new_exe = updater.download_update(info, Path(sys.executable).parent)
+            updater.apply_update_and_restart(new_exe)
+        except Exception as error:
+            self.status_label.config(text="")
+            messagebox.showerror("Update failed", f"Could not install the update:\n{error}")
+            return
+        # The new version is now launching; close this one.
+        self.conn.close()
+        self.root.destroy()
 
     # --- the whole look, in one place ----------------------------------------
 
@@ -1166,6 +1240,8 @@ class ClinicGUI:
 
 
 def main():
+    # Tidy up a leftover backup from a previous self-update, if any.
+    updater.cleanup_old()
     # First thing on every start: make sure the database and tables exist.
     # On the very first run on a new computer this creates them from scratch.
     ensure_database()
