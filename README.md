@@ -72,35 +72,3 @@ Two sides that meet at **medicines** (the bridge):
 > sale points back to its visit (`sales.visit_id`) — there's no separate
 > prescription table. A visit is never *forced* to have a sale: a patient can be
 > seen and buy nothing.
-
-## What comes next (build order)
-
-1. ✅ Schema — the tables.
-2. ✅ Simple actions: add a patient, record a visit, record a sale **and decrease stock** (FEFO, non-expired only).
-3. ✅ Views/alerts: what's expiring soon, what's low on stock (usable stock only).
-4. ✅ Reports: sales by month, totals for a period, best sellers (`reports.py`); a patient's visit history (`visits.py`).
-5. 🔨 A simple user interface — text menu (`app.py`) and a tabbed Tkinter window
-   (`gui.py`). Every feature, including all data entry (add medicine, receive
-   stock, add patient/employee/supplier, record visit, add follow-up), is in the
-   window. Left to do: polish the look (and reorganise the many tabs).
-
-Each step is built and explained one small piece at a time, so I understand it
-before moving on.
-
-## Still to confirm with my mother
-
-- What does she look up during a normal day? (Each answer points to a report.)
-- One computer or several at once? (Decides SQLite vs PostgreSQL timing.)
-- Any existing notebook/spreadsheet to import as a starting point?
-- **Stock habit:** will she keep a new batch boxed until the current one runs out
-  (so only one batch is open at a time)? This keeps the shelf matching the
-  database's soonest-expiry-first selling. (See DECISIONS.md #20.)
-- **Short-stock rule:** set PER MEDICINE (the `allow_partial_sale` flag). Owner
-  said (2026-08-20): she GIVES the partial amount and schedules the patient to
-  come back for the rest when it runs out -> partial selling is normal, so the
-  default is now allow-partial; the flag marks exceptions she chooses. STILL
-  OPEN: what to do for a **walk-in** customer (no consultation) when stock is
-  short. (#22.)
-- *(Built)* "schedule to come back" -- `followups.py` estimates when given
-  medicine runs out (quantity / daily dose) and lists patients to call. Owner
-  confirmed the trigger is running out, not a fixed date.
