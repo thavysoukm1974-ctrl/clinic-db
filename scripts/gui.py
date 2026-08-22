@@ -231,13 +231,18 @@ class ClinicGUI:
             self.status_label.config(text="Downloading update...")
             self.root.update_idletasks()
             new_exe = updater.download_update(info, Path(sys.executable).parent)
-            updater.apply_update_and_restart(new_exe)
+            updater.apply_update(new_exe)
         except Exception as error:
             self.status_label.config(text="")
             messagebox.showerror("Update failed", f"Could not install the update:\n{error}")
             return
-        # The helper is now waiting for us to close, then it installs and
-        # relaunches. Close the window so the app exits and frees the .exe file.
+        # The new version is in place; it is used on the next launch. We ask the
+        # user to reopen rather than relaunching ourselves (a normal double-click
+        # is the only launch a one-file exe reliably accepts).
+        messagebox.showinfo(
+            "Update installed",
+            f"Version {info['version']} has been installed.\n\n"
+            "The app will close now -- please open it again to use the new version.")
         self.root.destroy()
 
     # --- the whole look, in one place ----------------------------------------
