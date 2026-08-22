@@ -30,7 +30,9 @@ from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
 from followups import open_follow_ups, add_follow_up
 from reports import monthly_report_text, daily_report_text
-from inventory import add_medicine, receive_stock, add_supplier, COMMON_FORMS, COMMON_UNITS
+from inventory import (add_medicine, receive_stock, add_supplier, dispose_batch,
+                       COMMON_FORMS, COMMON_UNITS)
+from backup import make_backup
 
 # --- one place for the whole look (fonts + colours) ----------------------------
 # Change these and the entire window changes, because _apply_style() below feeds
@@ -78,6 +80,8 @@ class ClinicGUI:
         status.pack(side="bottom", fill="x")
         ttk.Label(status, text=f"Clinic system  v{updater.CURRENT_VERSION}",
                   foreground="#888").pack(side="left")
+        ttk.Button(status, text="Back up now",
+                   command=self._backup_now).pack(side="left", padx=12)
         ttk.Button(status, text="Check for updates",
                    command=self._check_updates_now).pack(side="right")
         self.status_label = ttk.Label(status, text="", foreground="#888")
@@ -185,6 +189,21 @@ class ClinicGUI:
         for panel in self._panels.values():
             panel.pack_forget()
         self._panels[name].pack(fill="both", expand=True)
+
+    # --- backup ---------------------------------------------------------------
+
+    def _backup_now(self):
+        """Save a safe, timestamped copy of the database."""
+        try:
+            path = make_backup(self.conn)
+        except Exception as error:
+            messagebox.showerror("Backup failed", f"Could not make a backup:\n{error}")
+            return
+        messagebox.showinfo(
+            "Backup saved",
+            f"A copy of all your data was saved to:\n\n{path}\n\n"
+            "Tip: copy the backups folder to a USB stick now and then, so your "
+            "records are safe even if this computer stops working.")
 
     # --- software updates -----------------------------------------------------
 
@@ -409,6 +428,10 @@ class ClinicGUI:
             ("Medicine", "Qty", "Expiry", "Status"), (170, 60, 110, 150), height=6)
         self._status_tags(self.expiry_table)
         self.expiry_table.pack(fill="both", expand=True)
+        # Throw away an expired (or unwanted) batch: select a row, click the button.
+        ttk.Button(frame, text="Throw away selected batch",
+                   command=self._throw_away_selected).pack(anchor="w", pady=(4, 0))
+
         ttk.Label(frame, text="Low on stock", font=BOLD).pack(anchor="w", pady=(10, 0))
         self.low_table = self._table(
             frame, ("name", "on_hand", "threshold"),
@@ -421,12 +444,14 @@ class ClinicGUI:
 
     def _refresh_alerts(self):
         expiry_rows = []
-        for name, _batch_id, qty, expiry, days_left in expiring_soon(self.conn, days=30):
+        self._expiry_batch_ids = []      # batch id per expiry row, in order
+        for name, batch_id, qty, expiry, days_left in expiring_soon(self.conn, days=30):
             if days_left < 0:
                 when, tag = f"EXPIRED {-days_left}d ago", "red"      # already expired
             else:
                 when, tag = f"in {days_left}d", "yellow"            # expiring soon
             expiry_rows.append(((name, qty, expiry, when), tag))
+            self._expiry_batch_ids.append(batch_id)
         self._fill_coloured(self.expiry_table, expiry_rows)
 
         low_rows = []
@@ -434,6 +459,24 @@ class ClinicGUI:
             tag = "red" if on_hand == 0 else "yellow"               # out vs low
             low_rows.append(((name, on_hand, threshold), tag))
         self._fill_coloured(self.low_table, low_rows)
+
+    def _throw_away_selected(self):
+        """Discard the selected expiry-list batch (e.g. an expired one thrown
+        away): set its quantity to 0 so it leaves stock and the alert."""
+        selected = self.expiry_table.selection()
+        if not selected:
+            messagebox.showinfo("Throw away", "Select a batch in the list first.")
+            return
+        index = self.expiry_table.index(selected[0])
+        values = self.expiry_table.item(selected[0], "values")   # (name, qty, expiry, status)
+        if not messagebox.askyesno(
+                "Throw away batch",
+                f"Throw away {values[1]} x {values[0]} (expiry {values[2]})?\n\n"
+                "This removes them from stock. Use it for expired medicine you discard."):
+            return
+        dispose_batch(self.conn, self._expiry_batch_ids[index])
+        self._refresh_alerts()
+        self._refresh_stock()
 
     # --- Record sale tab -----------------------------------------------------
 

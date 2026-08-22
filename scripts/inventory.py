@@ -79,6 +79,17 @@ def receive_stock(conn, medicine_id, quantity, purchase_price=None,
     return batch_id
 
 
+def dispose_batch(conn, batch_id):
+    """Record that a batch was thrown away: set its remaining quantity to 0.
+
+    Used for expired stock the clinic discards. The batch row stays (its
+    received_quantity and expiry are still history), but with 0 left it drops off
+    the stock counts and the expiry alert.
+    """
+    conn.execute("UPDATE batches SET quantity = 0 WHERE id = ?", (batch_id,))
+    conn.commit()
+
+
 def main():
     """Self-test on the sample database: add a medicine, a supplier, and a batch."""
     from stock import current_stock

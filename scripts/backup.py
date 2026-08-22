@@ -23,27 +23,37 @@ from datetime import datetime
 from init_db import DB_FILE, BACKUP_DIR
 
 
-def main():
-    if not DB_FILE.exists():
-        print("No database file yet -- run scripts/init_db.py first.")
-        return
+def make_backup(source_conn=None):
+    """Write a safe, timestamped copy of the database and return its path.
 
+    Pass the app's live connection as source_conn (so we snapshot exactly what's
+    open); if none is given, we open the database file ourselves. Either way we
+    use SQLite's own backup API, which copies a CONSISTENT snapshot even while
+    the database is being used -- unlike a plain file copy, which can be corrupt
+    if taken mid-write.
+    """
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     backup_path = BACKUP_DIR / f"clinic-{stamp}.sqlite"
 
-    # Open the live database and an empty destination file, then let SQLite copy
-    # a clean snapshot from one to the other.
-    source = sqlite3.connect(DB_FILE)
+    own_source = source_conn is None
+    source = sqlite3.connect(DB_FILE) if own_source else source_conn
     dest = sqlite3.connect(backup_path)
     try:
         with dest:
             source.backup(dest)
     finally:
         dest.close()
-        source.close()
+        if own_source:
+            source.close()      # only close a connection we opened ourselves
+    return backup_path
 
-    print(f"Backup written to: {backup_path}")
+
+def main():
+    if not DB_FILE.exists():
+        print("No database file yet -- run scripts/init_db.py first.")
+        return
+    print(f"Backup written to: {make_backup()}")
 
 
 if __name__ == "__main__":
