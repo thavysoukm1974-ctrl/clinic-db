@@ -147,8 +147,9 @@ def main():
         conn.commit()
 
         # --- some real sales, using the actual selling logic -------------------
-        # A walk-in counter sale (no visit).
-        record_sale(conn, [(med_ids["Paracetamol"], 2), (med_ids["Vitamin C"], 1)])
+        # A walk-in counter sale (no visit), sold by the pharmacy staff.
+        record_sale(conn, [(med_ids["Paracetamol"], 2), (med_ids["Vitamin C"], 1)],
+                    employee_id=employee_ids["Pharm Bo"])
 
         # A visit where medicine is given (recorded as a visit-linked sale).
         record_visit(

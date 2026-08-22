@@ -248,9 +248,13 @@ CREATE TABLE IF NOT EXISTS sales (
                                                  --   or via the visit) so the debt is
                                                  --   always attributable to someone in
                                                  --   the records. NULL for a paid sale.
+    employee_id     INTEGER,                     -- which staff member made the sale
+                                                 --   (the seller). Optional. For a visit
+                                                 --   sale this is the doctor who saw them.
 
-    FOREIGN KEY (visit_id)   REFERENCES visits(id),
-    FOREIGN KEY (patient_id) REFERENCES patients(id)
+    FOREIGN KEY (visit_id)    REFERENCES visits(id),
+    FOREIGN KEY (patient_id)  REFERENCES patients(id),
+    FOREIGN KEY (employee_id) REFERENCES employees(id)
 );
 
 

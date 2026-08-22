@@ -87,8 +87,10 @@ def record_visit(conn, patient_id, employee_id=None, visit_date=None,
     sale_id = None
     shortfalls = []
     if medicines:
-        # Same selling logic as a counter sale, just tagged with this visit_id.
-        sale_id, shortfalls = record_sale(conn, medicines, visit_id=visit_id, paid=paid)
+        # Same selling logic as a counter sale, tagged with this visit_id and
+        # attributed to the doctor who saw the patient as the seller.
+        sale_id, shortfalls = record_sale(conn, medicines, visit_id=visit_id,
+                                          paid=paid, employee_id=employee_id)
 
     return visit_id, sale_id, shortfalls
 

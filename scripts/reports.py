@@ -194,6 +194,25 @@ def reorder_spend_by_medicine(conn, start_date, end_date):
     ).fetchall()
 
 
+def sales_by_employee(conn, start_date, end_date):
+    """Return [(seller_name, num_sales, revenue)] for the range, biggest first.
+    Sales with no recorded seller are grouped under '(unrecorded)'."""
+    return conn.execute(
+        """
+        SELECT COALESCE(e.name, '(unrecorded)') AS seller,
+               COUNT(DISTINCT s.id),
+               COALESCE(SUM(si.quantity * si.unit_price), 0) AS revenue
+        FROM sales s
+        JOIN sale_items si     ON si.sale_id = s.id
+        LEFT JOIN employees e  ON e.id = s.employee_id
+        WHERE date(s.sale_datetime) BETWEEN ? AND ?
+        GROUP BY s.employee_id
+        ORDER BY revenue DESC
+        """,
+        (start_date, end_date),
+    ).fetchall()
+
+
 def revenue_split_by_paid(conn, start_date, end_date):
     """Split sales revenue in the range into (received, owed):
       received = total of sales already PAID (money in hand),
@@ -267,6 +286,13 @@ def period_report_text(conn, start, end, title_lines):
         lines.append("    (no sales)")
     for name, quantity, item_revenue in best:
         lines.append(f"    {name:<22}{quantity:>5} sold {item_revenue:>11.2f}")
+    lines.append("")
+    lines.append("SALES BY STAFF  (who sold)")
+    staff = sales_by_employee(conn, start, end)
+    if not staff:
+        lines.append("    (no sales)")
+    for seller, count, seller_revenue in staff:
+        lines.append(f"    {seller:<22}{count:>4} sales {seller_revenue:>11.2f}")
     lines.append("")
     lines.append("DEBTS  (unpaid sales this period)")
     debts = debts_in_period(conn, start, end)

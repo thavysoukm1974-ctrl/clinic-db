@@ -338,6 +338,8 @@ class ClinicGUI:
         names = [name for _id, name in self._employees]
         if hasattr(self, "visit_employee_box"):
             self.visit_employee_box["values"] = ["(none)"] + names
+        if hasattr(self, "sell_employee_box"):
+            self.sell_employee_box["values"] = ["(not specified)"] + names
 
     def _reload_suppliers(self):
         self._suppliers = self._supplier_rows()
@@ -528,10 +530,20 @@ class ClinicGUI:
         ttk.Button(pay, text="Clear", width=6,
                    command=lambda: self.sell_patient_box.set("")).pack(side="left")
 
+        # Who made the sale (optional). "(not specified)" leaves it blank.
+        sold_by = ttk.Frame(frame)
+        sold_by.grid(row=8, column=0, columnspan=3, sticky="w", pady=(2, 2))
+        ttk.Label(sold_by, text="Sold by:").pack(side="left")
+        self.sell_employee_box = ttk.Combobox(
+            sold_by, state="readonly", width=22,
+            values=["(not specified)"] + [name for _id, name in self._employees])
+        self.sell_employee_box.current(0)
+        self.sell_employee_box.pack(side="left", padx=4)
+
         ttk.Button(frame, text="Complete sale", command=self._complete_sale)\
-            .grid(row=8, column=0, columnspan=3, pady=4)
+            .grid(row=9, column=0, columnspan=3, pady=4)
         self.sell_result = ttk.Label(frame, text="", foreground="green")
-        self.sell_result.grid(row=9, column=0, columnspan=3, sticky="w")
+        self.sell_result.grid(row=10, column=0, columnspan=3, sticky="w")
         return frame
 
     def _remove_from_basket(self):
@@ -577,8 +589,11 @@ class ClinicGUI:
                 return
             patient_id = self._patients[index][0]
 
-        sale_id, shortfalls = record_sale(self.conn, self.basket,
-                                          paid=paid, patient_id=patient_id)
+        seller_index = self.sell_employee_box.current()   # 0 = "(not specified)"
+        employee_id = None if seller_index <= 0 else self._employees[seller_index - 1][0]
+
+        sale_id, shortfalls = record_sale(self.conn, self.basket, paid=paid,
+                                          patient_id=patient_id, employee_id=employee_id)
         if sale_id is None:
             message = "Nothing could be sold (out of stock)."
         else:
@@ -596,6 +611,7 @@ class ClinicGUI:
         self.basket_table.delete(*self.basket_table.get_children())
         self.sell_paid.set(1)
         self.sell_patient_box.set("")
+        self.sell_employee_box.current(0)
         self._refresh_stock()
         self._refresh_money()
         if hasattr(self, "debts_table"):

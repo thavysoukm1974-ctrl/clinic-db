@@ -16,7 +16,7 @@ from init_db import DB_FILE, get_connection
 from stock import batches_for
 
 
-def record_sale(conn, items, visit_id=None, paid=True, patient_id=None):
+def record_sale(conn, items, visit_id=None, paid=True, patient_id=None, employee_id=None):
     """Record ONE sale (a receipt) that may contain several medicines.
 
     `items` is a list, one entry per medicine on the receipt, each either:
@@ -93,8 +93,9 @@ def record_sale(conn, items, visit_id=None, paid=True, patient_id=None):
     # 3. One sale header for the medicines we can fill (NULL visit_id = walk-in).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sale_id = conn.execute(
-        "INSERT INTO sales (sale_datetime, visit_id, paid, patient_id) VALUES (?, ?, ?, ?)",
-        (now, visit_id, 1 if paid else 0, patient_id),
+        "INSERT INTO sales (sale_datetime, visit_id, paid, patient_id, employee_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (now, visit_id, 1 if paid else 0, patient_id, employee_id),
     ).lastrowid
 
     # 4. Fill each sellable line from its batches (soonest-expiry first).
