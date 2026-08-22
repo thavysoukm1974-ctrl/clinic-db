@@ -475,6 +475,10 @@ class ClinicGUI:
             pay, state="readonly", width=20,
             values=[name for _id, name in self._patients])
         self.sell_patient_box.pack(side="left", padx=4)
+        # A read-only dropdown can't be emptied by typing, so give it a Clear
+        # button (in case a patient was picked by mistake).
+        ttk.Button(pay, text="Clear", width=6,
+                   command=lambda: self.sell_patient_box.set("")).pack(side="left")
 
         ttk.Button(frame, text="Complete sale", command=self._complete_sale)\
             .grid(row=8, column=0, columnspan=3, pady=4)
