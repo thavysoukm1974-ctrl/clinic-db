@@ -241,8 +241,16 @@ CREATE TABLE IF NOT EXISTS sales (
     id              INTEGER PRIMARY KEY,
     sale_datetime   TEXT    NOT NULL,            -- ISO text "2026-08-19 14:30:00"
     visit_id        INTEGER,                     -- the visit this sale came from (optional)
+    paid            INTEGER NOT NULL DEFAULT 1,  -- 1 = paid now, 0 = owed (pay later)
+    patient_id      INTEGER,                     -- who owes, for a credit (pay-later)
+                                                 --   counter sale. A pay-later sale MUST
+                                                 --   be tied to a real patient (via this
+                                                 --   or via the visit) so the debt is
+                                                 --   always attributable to someone in
+                                                 --   the records. NULL for a paid sale.
 
-    FOREIGN KEY (visit_id) REFERENCES visits(id)
+    FOREIGN KEY (visit_id)   REFERENCES visits(id),
+    FOREIGN KEY (patient_id) REFERENCES patients(id)
 );
 
 

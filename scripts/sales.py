@@ -16,7 +16,7 @@ from init_db import DB_FILE, get_connection
 from stock import batches_for
 
 
-def record_sale(conn, items, visit_id=None):
+def record_sale(conn, items, visit_id=None, paid=True, patient_id=None):
     """Record ONE sale (a receipt) that may contain several medicines.
 
     `items` is a list, one entry per medicine on the receipt, each either:
@@ -24,6 +24,12 @@ def record_sale(conn, items, visit_id=None):
         (medicine_id, quantity, unit_price)  -- sold at THIS price instead
     The override lets a line be free (price 0) or discounted. Whatever price is
     used is frozen onto the sale, so a later catalog price change never rewrites it.
+
+    paid=False records the sale as MONEY OWED (pay later). A pay-later sale MUST
+    be tied to a real patient so the debt is always attributable: either through
+    visit_id (a visit knows its patient) or through patient_id (a counter credit
+    sale). Recording an unpaid sale with neither is refused.
+    See outstanding_debts() and mark_sale_paid().
 
     Policy when a medicine is short on stock depends on that medicine's own
     `allow_partial_sale` flag (a column on the medicines table):
@@ -47,6 +53,9 @@ def record_sale(conn, items, visit_id=None):
     """
     if not items:
         raise ValueError("a sale needs at least one item")
+    # A debt must belong to a real patient, so we can always tell who owes.
+    if not paid and visit_id is None and patient_id is None:
+        raise ValueError("a pay-later sale must be linked to a patient")
 
     # Normalize every item to (medicine_id, quantity, unit_price), where a
     # unit_price of None means "use the medicine's current catalog price".
@@ -84,7 +93,8 @@ def record_sale(conn, items, visit_id=None):
     # 3. One sale header for the medicines we can fill (NULL visit_id = walk-in).
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sale_id = conn.execute(
-        "INSERT INTO sales (sale_datetime, visit_id) VALUES (?, ?)", (now, visit_id)
+        "INSERT INTO sales (sale_datetime, visit_id, paid, patient_id) VALUES (?, ?, ?, ?)",
+        (now, visit_id, 1 if paid else 0, patient_id),
     ).lastrowid
 
     # 4. Fill each sellable line from its batches (soonest-expiry first).
@@ -140,6 +150,38 @@ def _allows_partial(conn, medicine_id):
         "SELECT allow_partial_sale FROM medicines WHERE id = ?", (medicine_id,)
     ).fetchone()
     return bool(row[0])
+
+
+def outstanding_debts(conn):
+    """Return the unpaid sales (money owed), oldest first. Each row is
+    (sale_id, sale_datetime, who, amount).
+
+    `who` is the patient who owes -- found either through the sale's visit or
+    directly on the sale (both point at the patients table). `amount` is the
+    sale's total, computed from its lines. Debts always have a patient.
+    """
+    return conn.execute(
+        """
+        SELECT s.id,
+               s.sale_datetime,
+               COALESCE(pv.name, pd.name, '?') AS who,
+               COALESCE(SUM(si.quantity * si.unit_price), 0) AS amount
+        FROM sales s
+        JOIN sale_items si     ON si.sale_id = s.id
+        LEFT JOIN visits v     ON v.id = s.visit_id
+        LEFT JOIN patients pv  ON pv.id = v.patient_id
+        LEFT JOIN patients pd  ON pd.id = s.patient_id
+        WHERE s.paid = 0
+        GROUP BY s.id
+        ORDER BY s.sale_datetime
+        """
+    ).fetchall()
+
+
+def mark_sale_paid(conn, sale_id):
+    """Mark a previously-owed sale as now paid."""
+    conn.execute("UPDATE sales SET paid = 1 WHERE id = ?", (sale_id,))
+    conn.commit()
 
 
 def _medicine_name(conn, medicine_id):

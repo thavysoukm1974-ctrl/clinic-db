@@ -53,12 +53,15 @@ def add_employee(conn, name, role=None, date_of_birth=None, address=None, phone=
 
 
 def record_visit(conn, patient_id, employee_id=None, visit_date=None,
-                 diagnosis=None, treatment=None, medicines=None):
+                 diagnosis=None, treatment=None, medicines=None, paid=True):
     """Record one visit, and optionally the medicine given during it.
 
-    `medicines` (optional) is a list of (medicine_id, quantity) handed to the
-    patient. Because giving medicine counts as selling it, it is recorded as a
-    sale linked to this visit (via record_sale), which also decrements stock.
+    `medicines` (optional) is a list of items handed to the patient -- each
+    (medicine_id, quantity) at catalog price, or (medicine_id, quantity, price)
+    to override (price 0 = given free). Because giving medicine counts as selling
+    it, it is recorded as a sale linked to this visit, which decrements stock.
+    paid=False records that sale as owed (pay later); the debt is attributed to
+    this visit's patient.
 
     Returns (visit_id, sale_id, shortfalls):
       * visit_id   -- the new visit (always created; a visit is valid on its own,
@@ -85,7 +88,7 @@ def record_visit(conn, patient_id, employee_id=None, visit_date=None,
     shortfalls = []
     if medicines:
         # Same selling logic as a counter sale, just tagged with this visit_id.
-        sale_id, shortfalls = record_sale(conn, medicines, visit_id=visit_id)
+        sale_id, shortfalls = record_sale(conn, medicines, visit_id=visit_id, paid=paid)
 
     return visit_id, sale_id, shortfalls
 

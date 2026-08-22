@@ -21,7 +21,7 @@ from datetime import date
 
 from init_db import DB_FILE, get_connection, ensure_database
 from stock import current_stock
-from sales import record_sale
+from sales import record_sale, outstanding_debts, mark_sale_paid
 from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
 from followups import open_follow_ups, add_follow_up
@@ -85,6 +85,7 @@ class ClinicGUI:
             ("Follow-ups",      self._followups_tab),
             ("Patient history", self._history_tab),
             ("Money",           self._money_tab),
+            ("Debts",           self._debts_tab),
         ]
         add_items = [
             ("Record sale",   self._sell_tab),
@@ -105,7 +106,7 @@ class ClinicGUI:
         view_groups = [
             ("Stock",    ["Stock", "Alerts"]),
             ("Patients", ["Patient history", "Follow-ups"]),
-            ("Reports",  ["Money"]),
+            ("Reports",  ["Money", "Debts"]),
         ]
         add_groups = [
             ("Selling",           ["Record sale"]),
@@ -229,7 +230,8 @@ class ClinicGUI:
     def _reload_patients(self):
         self._patients = self._patient_rows()
         names = [name for _id, name in self._patients]
-        for attr in ("history_patient_box", "visit_patient_box", "followup_patient_box"):
+        for attr in ("history_patient_box", "visit_patient_box",
+                     "followup_patient_box", "sell_patient_box"):
             if hasattr(self, attr):
                 getattr(self, attr)["values"] = names
 
@@ -387,10 +389,23 @@ class ClinicGUI:
 
         ttk.Button(frame, text="Remove selected item", command=self._remove_from_basket)\
             .grid(row=6, column=0, columnspan=3, sticky="w", pady=(2, 6))
+
+        # Payment: paid now, or owed by a patient (pay later). A pay-later sale
+        # must name a patient, because a debt has to belong to someone in the records.
+        pay = ttk.Frame(frame)
+        pay.grid(row=7, column=0, columnspan=3, sticky="w", pady=(0, 2))
+        self.sell_paid = tk.IntVar(value=1)
+        ttk.Checkbutton(pay, text="Paid now", variable=self.sell_paid).pack(side="left")
+        ttk.Label(pay, text="   If pay later, patient:").pack(side="left")
+        self.sell_patient_box = ttk.Combobox(
+            pay, state="readonly", width=20,
+            values=[name for _id, name in self._patients])
+        self.sell_patient_box.pack(side="left", padx=4)
+
         ttk.Button(frame, text="Complete sale", command=self._complete_sale)\
-            .grid(row=7, column=0, columnspan=3, pady=4)
+            .grid(row=8, column=0, columnspan=3, pady=4)
         self.sell_result = ttk.Label(frame, text="", foreground="green")
-        self.sell_result.grid(row=8, column=0, columnspan=3, sticky="w")
+        self.sell_result.grid(row=9, column=0, columnspan=3, sticky="w")
         return frame
 
     def _remove_from_basket(self):
@@ -425,7 +440,19 @@ class ClinicGUI:
         if not self.basket:
             self.sell_result.config(text="Basket is empty.", foreground="red")
             return
-        sale_id, shortfalls = record_sale(self.conn, self.basket)
+        paid = bool(self.sell_paid.get())
+        patient_id = None
+        if not paid:
+            index = self.sell_patient_box.current()
+            if index < 0:
+                self.sell_result.config(
+                    text="A pay-later sale needs a patient (they must be in the records).",
+                    foreground="red")
+                return
+            patient_id = self._patients[index][0]
+
+        sale_id, shortfalls = record_sale(self.conn, self.basket,
+                                          paid=paid, patient_id=patient_id)
         if sale_id is None:
             message = "Nothing could be sold (out of stock)."
         else:
@@ -433,12 +460,20 @@ class ClinicGUI:
                 "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
                 (sale_id,)).fetchone()[0]
             message = f"Recorded sale #{sale_id}, total {total}."
+            if not paid:
+                message += f"  OWED by {self.sell_patient_box.get()}."
         if shortfalls:
             message += f" ({len(shortfalls)} item(s) short)"
+
+        # Reset the basket and payment inputs for the next sale.
         self.basket = []
         self.basket_table.delete(*self.basket_table.get_children())
+        self.sell_paid.set(1)
+        self.sell_patient_box.set("")
         self._refresh_stock()
         self._refresh_money()
+        if hasattr(self, "debts_table"):
+            self._refresh_debts()
         self.sell_result.config(text=message, foreground="green")
 
     # --- Follow-ups tab ------------------------------------------------------
@@ -595,6 +630,48 @@ class ClinicGUI:
         with open(path, "w", encoding="utf-8") as report_file:
             report_file.write(self._last_report)
         self.report_status.config(text=f"Saved to {path}", foreground="green")
+
+    # --- Debts tab -----------------------------------------------------------
+
+    def _debts_tab(self, parent):
+        frame = ttk.Frame(parent, padding=10)
+        ttk.Label(frame, text="Money owed (pay later)", font=BOLD).pack(pady=6)
+        ttk.Label(frame, text="Sales not yet paid. Select one and mark it paid when the patient settles up.")\
+            .pack(anchor="w")
+        self.debts_table = self._table(
+            frame, ("who", "amount", "date"),
+            ("Patient", "Amount owed", "Sale date"), (200, 110, 160))
+        self.debts_table.pack(fill="both", expand=True, pady=(4, 0))
+        self._debt_sale_ids = []   # sale id per table row, in order
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(pady=6)
+        ttk.Button(buttons, text="Mark selected as paid", command=self._mark_debt_paid).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Refresh", command=self._refresh_debts).pack(side="left", padx=4)
+        self.debts_result = ttk.Label(frame, text="", foreground="green")
+        self.debts_result.pack(anchor="w")
+        self._refresh_debts()
+        return frame
+
+    def _refresh_debts(self):
+        self._debt_sale_ids = []
+        rows = []
+        for sale_id, sale_datetime, who, amount in outstanding_debts(self.conn):
+            self._debt_sale_ids.append(sale_id)
+            rows.append((who, amount, sale_datetime))
+        self._fill(self.debts_table, rows)
+
+    def _mark_debt_paid(self):
+        selected = self.debts_table.selection()
+        if not selected:
+            self.debts_result.config(text="Select a debt first.", foreground="red")
+            return
+        index = self.debts_table.index(selected[0])
+        sale_id = self._debt_sale_ids[index]
+        mark_sale_paid(self.conn, sale_id)
+        self._refresh_debts()
+        self._refresh_money()
+        self.debts_result.config(text=f"Sale #{sale_id} marked as paid.", foreground="green")
 
     # --- Add medicine tab ----------------------------------------------------
 
@@ -905,10 +982,18 @@ class ClinicGUI:
         self.visit_qty = ttk.Entry(frame, width=10)
         self.visit_qty.grid(row=next_row + 1, column=1, sticky="w", padx=4, pady=2)
 
+        # Give the medicine free, and/or record it as paid now vs owed (pay later).
+        self.visit_free = tk.IntVar(value=0)
+        ttk.Checkbutton(frame, text="Give medicine free (no charge)",
+                        variable=self.visit_free).grid(row=next_row + 2, column=1, sticky="w", padx=4)
+        self.visit_paid = tk.IntVar(value=1)
+        ttk.Checkbutton(frame, text="Paid now (untick = patient owes, pay later)",
+                        variable=self.visit_paid).grid(row=next_row + 3, column=1, sticky="w", padx=4)
+
         ttk.Button(frame, text="Save visit", command=self._submit_visit)\
-            .grid(row=next_row + 2, column=1, sticky="w", padx=4, pady=8)
+            .grid(row=next_row + 4, column=1, sticky="w", padx=4, pady=8)
         self.visit_result = ttk.Label(frame, text="", foreground="green")
-        self.visit_result.grid(row=next_row + 3, column=0, columnspan=2, sticky="w")
+        self.visit_result.grid(row=next_row + 5, column=0, columnspan=2, sticky="w")
         return frame
 
     def _submit_visit(self):
@@ -935,24 +1020,38 @@ class ClinicGUI:
                 self.visit_result.config(text="Qty given must be a whole number > 0.", foreground="red")
                 return
             medicine_id = self._medicines[medicine_index - 1][0]
-            medicines = [(medicine_id, int(qty_text))]
+            quantity = int(qty_text)
+            if self.visit_free.get():
+                medicines = [(medicine_id, quantity, 0.0)]   # price 0 = free
+            else:
+                medicines = [(medicine_id, quantity)]
 
+        paid = bool(self.visit_paid.get())
         visit_id, sale_id, shortfalls = record_visit(
             self.conn, patient_id, employee_id=employee_id, visit_date=visit_date,
             diagnosis=self.visit_fields["diagnosis"].get().strip() or None,
             treatment=self.visit_fields["treatment"].get().strip() or None,
-            medicines=medicines)
+            medicines=medicines, paid=paid)
 
         message = f"Recorded visit #{visit_id}."
         if sale_id is not None:
-            message += f" (medicine sold, sale #{sale_id})"
+            if self.visit_free.get():
+                message += " (medicine given free)"
+            elif not paid:
+                message += f" (medicine OWED by {self._patients[patient_index][1]})"
+            else:
+                message += " (medicine sold)"
         if shortfalls:
-            message += " some medicine was short of stock"
+            message += " -- some medicine was short of stock"
         # Clear the medicine part; keep patient/date for convenience.
         self.visit_qty.delete(0, "end")
         self.visit_medicine_box.current(0)
+        self.visit_free.set(0)
+        self.visit_paid.set(1)
         self._refresh_stock()
         self._refresh_money()
+        if hasattr(self, "debts_table"):
+            self._refresh_debts()
         self.visit_result.config(text=message, foreground="green")
 
     # --- Add follow-up tab ---------------------------------------------------
