@@ -20,10 +20,10 @@ from i18n import t
 
 
 def money(amount):
-    """Format an amount with thousands separators and 2 decimals, e.g.
-    1234.5 -> '1,234.50'. Used everywhere money is shown so large kip amounts
-    stay readable."""
-    return f"{amount:,.2f}"
+    """Format an amount as whole Lao kip with thousands separators and the kip
+    sign, e.g. 5000 -> '5,000 ₭'. Kip has no subunit, so no decimals. Used
+    everywhere money is shown so amounts read consistently."""
+    return f"{amount:,.0f} ₭"
 
 # A date range wide enough to mean "all time", used when no dates are given.
 _ALL_TIME = ("0000-01-01", "9999-12-31")
