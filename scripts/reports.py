@@ -18,6 +18,13 @@ from datetime import date
 from init_db import DB_FILE, get_connection
 from i18n import t
 
+
+def money(amount):
+    """Format an amount with thousands separators and 2 decimals, e.g.
+    1234.5 -> '1,234.50'. Used everywhere money is shown so large kip amounts
+    stay readable."""
+    return f"{amount:,.2f}"
+
 # A date range wide enough to mean "all time", used when no dates are given.
 _ALL_TIME = ("0000-01-01", "9999-12-31")
 
@@ -273,49 +280,49 @@ def period_report_text(conn, start, end, title_lines):
     lines.append("")
     lines.append(t("MONEY IN  (sales)"))
     lines.append(f"  {t('Total sales:'):<22}{num_sales}")
-    lines.append(f"  {t('Revenue received:'):<22}{received:>12.2f}")
-    lines.append(f"  {t('Still owed (unpaid):'):<22}{owed:>12.2f}")
-    lines.append(f"  {t('Total if all paid:'):<22}{received + owed:>12.2f}")
+    lines.append(f"  {t('Revenue received:'):<22}{money(received):>14}")
+    lines.append(f"  {t('Still owed (unpaid):'):<22}{money(owed):>14}")
+    lines.append(f"  {t('Total if all paid:'):<22}{money(received + owed):>14}")
     lines.append("")
     lines.append("  " + t("By channel:"))
-    lines.append(f"    {t('from patient visits:'):<20}{visit_rev:>12.2f}   ({visit_count} {t('sales')})")
-    lines.append(f"    {t('from walk-in buyers:'):<20}{walkin_rev:>12.2f}   ({walkin_count} {t('sales')})")
+    lines.append(f"    {t('from patient visits:'):<20}{money(visit_rev):>14}   ({visit_count} {t('sales')})")
+    lines.append(f"    {t('from walk-in buyers:'):<20}{money(walkin_rev):>14}   ({walkin_count} {t('sales')})")
     lines.append("")
     lines.append("  " + t("Best sellers (by quantity):"))
     best = best_sellers(conn, start, end)
     if not best:
         lines.append("    " + t("(no sales)"))
     for name, quantity, item_revenue in best:
-        lines.append(f"    {name:<22}{quantity:>5} {t('sold')} {item_revenue:>11.2f}")
+        lines.append(f"    {name:<22}{quantity:>5} {t('sold')} {money(item_revenue):>13}")
     lines.append("")
     lines.append(t("SALES BY STAFF  (who sold)"))
     staff = sales_by_employee(conn, start, end)
     if not staff:
         lines.append("    " + t("(no sales)"))
     for seller, count, seller_revenue in staff:
-        lines.append(f"    {seller:<22}{count:>4} {t('sales')} {seller_revenue:>11.2f}")
+        lines.append(f"    {seller:<22}{count:>4} {t('sales')} {money(seller_revenue):>13}")
     lines.append("")
     lines.append(t("DEBTS  (unpaid sales this period)"))
     debts = debts_in_period(conn, start, end)
     if not debts:
         lines.append("    " + t("(none)"))
     for who, amount in debts:
-        lines.append(f"    {who:<22}{amount:>14.2f}")
-    lines.append(f"  {t('Total owed:'):<22}{owed:>12.2f}")
+        lines.append(f"    {who:<22}{money(amount):>16}")
+    lines.append(f"  {t('Total owed:'):<22}{money(owed):>14}")
     lines.append("")
     lines.append(t("MONEY OUT  (restocking)"))
-    lines.append(f"  {t('Total reorder spend:'):<22}{spend:>12.2f}")
+    lines.append(f"  {t('Total reorder spend:'):<22}{money(spend):>14}")
     lines.append("  " + t("By supplier:"))
     for supplier, amount in reorder_spend_by_supplier(conn, start, end):
-        lines.append(f"    {supplier:<22}{amount:>14.2f}")
+        lines.append(f"    {supplier:<22}{money(amount):>16}")
     lines.append("  " + t("By medicine:"))
     for name, amount in reorder_spend_by_medicine(conn, start, end):
-        lines.append(f"    {name:<22}{amount:>14.2f}")
+        lines.append(f"    {name:<22}{money(amount):>16}")
     lines.append("")
     lines.append(t("PROFIT  (on what was sold)"))
-    lines.append(f"  {t('Revenue (all sales):'):<22}{revenue:>12.2f}")
-    lines.append(f"  {t('Cost of goods sold:'):<22}{cogs:>12.2f}")
-    lines.append(f"  {t('Gross profit:'):<22}{profit:>12.2f}")
+    lines.append(f"  {t('Revenue (all sales):'):<22}{money(revenue):>14}")
+    lines.append(f"  {t('Cost of goods sold:'):<22}{money(cogs):>14}")
+    lines.append(f"  {t('Gross profit:'):<22}{money(profit):>14}")
     lines.append("")
     return "\n".join(lines)
 

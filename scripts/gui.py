@@ -31,7 +31,7 @@ from sales import record_sale, outstanding_debts, mark_sale_paid
 from alerts import expiring_soon, low_stock
 from visits import patient_history, add_patient, add_employee, record_visit, COMMON_ROLES
 from followups import open_follow_ups, add_follow_up
-from reports import monthly_report_text, daily_report_text
+from reports import monthly_report_text, daily_report_text, money
 from inventory import (add_medicine, receive_stock, add_supplier, dispose_batch,
                        COMMON_FORMS, COMMON_UNITS)
 from backup import make_backup
@@ -676,7 +676,7 @@ class ClinicGUI:
             total = self.conn.execute(
                 "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
                 (sale_id,)).fetchone()[0]
-            message = f"Recorded sale #{sale_id}, total {total}."
+            message = f"Recorded sale #{sale_id}, total {money(total)}."
             if not paid:
                 message += f"  OWED by {self.sell_patient_box.get()}."
         if shortfalls:
@@ -899,7 +899,7 @@ class ClinicGUI:
         rows = []
         for sale_id, sale_datetime, who, amount in outstanding_debts(self.conn):
             self._debt_sale_ids.append(sale_id)
-            rows.append((who, amount, sale_datetime))
+            rows.append((who, money(amount), sale_datetime))
         self._fill(self.debts_table, rows)
 
     def _mark_debt_paid(self):
