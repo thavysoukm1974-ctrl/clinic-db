@@ -29,7 +29,7 @@ from pathlib import Path
 
 # Bump this on every release. It is baked into the built .exe and compared
 # against the latest release tag on GitHub.
-CURRENT_VERSION = "1.0.14"
+CURRENT_VERSION = "1.0.15"
 
 # Your GitHub repository, as owner/name.
 GITHUB_OWNER = "thavysoukm1974-ctrl"

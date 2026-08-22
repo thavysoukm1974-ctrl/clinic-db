@@ -67,7 +67,7 @@ class ClinicGUI:
     def __init__(self, conn):
         self.conn = conn
         self.root = tk.Tk()
-        self.root.title("Clinic system")
+        self.root.title(t("Clinic system"))
         self.root.geometry("1180x680")
         self.root.minsize(1050, 620)
         self._apply_style()
