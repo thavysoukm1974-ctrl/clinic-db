@@ -53,7 +53,7 @@ def add_employee(conn, name, role=None, date_of_birth=None, address=None, phone=
 
 
 def record_visit(conn, patient_id, employee_id=None, visit_date=None,
-                 diagnosis=None, treatment=None, medicines=None, paid=True):
+                 diagnosis=None, treatment=None, medicines=None, paid=True, discount=0):
     """Record one visit, and optionally the medicine given during it.
 
     `medicines` (optional) is a list of items handed to the patient -- each
@@ -90,7 +90,8 @@ def record_visit(conn, patient_id, employee_id=None, visit_date=None,
         # Same selling logic as a counter sale, tagged with this visit_id and
         # attributed to the doctor who saw the patient as the seller.
         sale_id, shortfalls = record_sale(conn, medicines, visit_id=visit_id,
-                                          paid=paid, employee_id=employee_id)
+                                          paid=paid, employee_id=employee_id,
+                                          discount=discount)
 
     return visit_id, sale_id, shortfalls
 

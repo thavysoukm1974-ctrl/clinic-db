@@ -16,7 +16,8 @@ from init_db import DB_FILE, get_connection
 from stock import batches_for
 
 
-def record_sale(conn, items, visit_id=None, paid=True, patient_id=None, employee_id=None):
+def record_sale(conn, items, visit_id=None, paid=True, patient_id=None,
+                employee_id=None, discount=0):
     """Record ONE sale (a receipt) that may contain several medicines.
 
     `items` is a list, one entry per medicine on the receipt, each either:
@@ -24,6 +25,11 @@ def record_sale(conn, items, visit_id=None, paid=True, patient_id=None, employee
         (medicine_id, quantity, unit_price)  -- sold at THIS price instead
     The override lets a line be free (price 0) or discounted. Whatever price is
     used is frozen onto the sale, so a later catalog price change never rewrites it.
+
+    `discount` is a whole-sale amount taken off the total (e.g. total 15,000 with
+    discount 5,000 is charged 10,000). It is spread across the line prices so the
+    total drops by exactly that much; a discount equal to the total makes the sale
+    free. Capped at the total so a sale can never go negative.
 
     paid=False records the sale as MONEY OWED (pay later). A pay-later sale MUST
     be tied to a real patient so the debt is always attributable: either through
@@ -98,11 +104,31 @@ def record_sale(conn, items, visit_id=None, paid=True, patient_id=None, employee
         (now, visit_id, 1 if paid else 0, patient_id, employee_id),
     ).lastrowid
 
-    # 4. Fill each sellable line from its batches (soonest-expiry first).
+    # 4. Work out each line's actual price (catalog price when none was given).
+    priced = []   # [medicine_id, quantity, price] we will actually charge
     for medicine_id, quantity, unit_price in to_sell:
-        _fill_one_line(conn, sale_id, medicine_id, quantity, unit_price)
+        if unit_price is None:
+            unit_price = conn.execute(
+                "SELECT unit_price FROM medicines WHERE id = ?", (medicine_id,)
+            ).fetchone()[0]
+        priced.append([medicine_id, quantity, unit_price])
 
-    # 5. One commit makes the whole (fillable) sale permanent at once.
+    # 5. Apply a whole-sale discount by lowering the line prices in proportion,
+    #    so the sale total drops by exactly `discount`. Because the discount ends
+    #    up in the frozen sale_items prices, every report reflects it with no
+    #    special handling. (A discount equal to the total makes the sale free.)
+    total = sum(quantity * price for _m, quantity, price in priced)
+    if discount and total > 0:
+        discount = min(discount, total)          # never discount more than the total
+        factor = (total - discount) / total
+        for line in priced:
+            line[2] = line[2] * factor
+
+    # 6. Fill each line from its batches (soonest-expiry first), at that price.
+    for medicine_id, quantity, price in priced:
+        _fill_one_line(conn, sale_id, medicine_id, quantity, price)
+
+    # 7. One commit makes the whole (fillable) sale permanent at once.
     conn.commit()
     return sale_id, shortfalls
 

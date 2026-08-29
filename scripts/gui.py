@@ -612,6 +612,9 @@ class ClinicGUI:
             values=["(not specified)"] + [name for _id, name in self._employees])
         self.sell_employee_box.current(0)
         self.sell_employee_box.pack(side="left", padx=4)
+        ttk.Label(sold_by, text="Discount (₭):").pack(side="left", padx=(16, 0))
+        self.sell_discount = ttk.Entry(sold_by, width=10)
+        self.sell_discount.pack(side="left", padx=4)
 
         ttk.Button(frame, text="Complete sale", command=self._complete_sale)\
             .grid(row=9, column=0, columnspan=3, pady=4)
@@ -668,8 +671,15 @@ class ClinicGUI:
         seller_index = self.sell_employee_box.current()   # 0 = "(not specified)"
         employee_id = None if seller_index <= 0 else self._employees[seller_index - 1][0]
 
+        discount_text = self.sell_discount.get().strip()
+        if discount_text and not discount_text.isdigit():
+            self.sell_result.config(text="Discount must be a whole number.", foreground="red")
+            return
+        discount = int(discount_text) if discount_text else 0
+
         sale_id, shortfalls = record_sale(self.conn, self.basket, paid=paid,
-                                          patient_id=patient_id, employee_id=employee_id)
+                                          patient_id=patient_id, employee_id=employee_id,
+                                          discount=discount)
         if sale_id is None:
             message = "Nothing could be sold (out of stock)."
         else:
@@ -677,6 +687,8 @@ class ClinicGUI:
                 "SELECT SUM(quantity * unit_price) FROM sale_items WHERE sale_id = ?",
                 (sale_id,)).fetchone()[0]
             message = f"Recorded sale #{sale_id}, total {money(total)}."
+            if discount:
+                message += f" (after {money(discount)} discount)"
             if not paid:
                 message += f"  OWED by {self.sell_patient_box.get()}."
         if shortfalls:
@@ -688,6 +700,7 @@ class ClinicGUI:
         self.sell_paid.set(1)
         self.sell_patient_box.set("")
         self.sell_employee_box.current(0)
+        self.sell_discount.delete(0, "end")
         self._refresh_stock()
         self._refresh_money()
         if hasattr(self, "debts_table"):
@@ -1211,10 +1224,12 @@ class ClinicGUI:
         self.visit_qty = ttk.Entry(frame, width=10)
         self.visit_qty.grid(row=next_row + 1, column=1, sticky="w", padx=4, pady=2)
 
-        # Give the medicine free, and/or record it as paid now vs owed (pay later).
-        self.visit_free = tk.IntVar(value=0)
-        ttk.Checkbutton(frame, text="Give medicine free (no charge)",
-                        variable=self.visit_free).grid(row=next_row + 2, column=1, sticky="w", padx=4)
+        # Optional discount (kip) off the medicine given; and paid-now vs owed.
+        discount_row = ttk.Frame(frame)
+        discount_row.grid(row=next_row + 2, column=1, sticky="w", padx=4, pady=2)
+        ttk.Label(discount_row, text="Discount (₭):").pack(side="left")
+        self.visit_discount = ttk.Entry(discount_row, width=10)
+        self.visit_discount.pack(side="left", padx=4)
         self.visit_paid = tk.IntVar(value=1)
         ttk.Checkbutton(frame, text="Paid now (untick = patient owes, pay later)",
                         variable=self.visit_paid).grid(row=next_row + 3, column=1, sticky="w", padx=4)
@@ -1242,6 +1257,7 @@ class ClinicGUI:
 
         # Optional medicine given during the visit (blank box = none).
         medicines = None
+        discount = 0
         medicine_name = self.visit_medicine_box.get().strip()
         if medicine_name:
             medicine_id = self._medicine_id_by_name(medicine_name)
@@ -1252,23 +1268,24 @@ class ClinicGUI:
             if not (qty_text.isdigit() and int(qty_text) > 0):
                 self.visit_result.config(text="Qty given must be a whole number > 0.", foreground="red")
                 return
-            quantity = int(qty_text)
-            if self.visit_free.get():
-                medicines = [(medicine_id, quantity, 0.0)]   # price 0 = free
-            else:
-                medicines = [(medicine_id, quantity)]
+            medicines = [(medicine_id, int(qty_text))]
+            discount_text = self.visit_discount.get().strip()
+            if discount_text and not discount_text.isdigit():
+                self.visit_result.config(text="Discount must be a whole number.", foreground="red")
+                return
+            discount = int(discount_text) if discount_text else 0
 
         paid = bool(self.visit_paid.get())
         visit_id, sale_id, shortfalls = record_visit(
             self.conn, patient_id, employee_id=employee_id, visit_date=visit_date,
             diagnosis=self.visit_fields["diagnosis"].get().strip() or None,
             treatment=self.visit_fields["treatment"].get().strip() or None,
-            medicines=medicines, paid=paid)
+            medicines=medicines, paid=paid, discount=discount)
 
         message = f"Recorded visit #{visit_id}."
         if sale_id is not None:
-            if self.visit_free.get():
-                message += " (medicine given free)"
+            if discount:
+                message += f" (medicine given, {money(discount)} discount)"
             elif not paid:
                 message += f" (medicine OWED by {self._patients[patient_index][1]})"
             else:
@@ -1279,7 +1296,7 @@ class ClinicGUI:
         self.visit_qty.delete(0, "end")
         self.visit_medicine_box.set("")
         self.visit_medicine_box["values"] = self.visit_medicine_box._all_values
-        self.visit_free.set(0)
+        self.visit_discount.delete(0, "end")
         self.visit_paid.set(1)
         self._refresh_stock()
         self._refresh_money()

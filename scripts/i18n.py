@@ -93,7 +93,7 @@ _THAI = {
     "Give medicine:": "จ่ายยา:",
     "Daily dose:": "ขนาดต่อวัน:",
     "Quantity given:": "จำนวนที่ให้:",
-    "Give medicine free (no charge)": "จ่ายยาฟรี (ไม่คิดเงิน)",
+    "Discount (₭):": "ส่วนลด (₭):",
     "Paid now (untick = patient owes, pay later)": "ชำระแล้ว (ไม่ติ๊ก = ค้างชำระ จ่ายภายหลัง)",
     "Allow partial sale": "อนุญาตให้ขายบางส่วน",
     # panel headings
